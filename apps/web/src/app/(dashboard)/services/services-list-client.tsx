@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import {
   Select,
@@ -67,7 +68,7 @@ function GroupSelect({
   );
 }
 
-function ServiceRow({
+function ServiceCard({
   service,
   groups,
   onChanged,
@@ -77,24 +78,28 @@ function ServiceRow({
   onChanged: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3.5 text-sm transition-colors hover:bg-accent/50">
-      <Link href={`/services/${service.id}`} className="group flex min-w-0 flex-1 items-center gap-4">
-        <StatusLabel status={service.status} />
-        <div className="min-w-0">
-          <p className="truncate font-medium text-foreground group-hover:text-primary transition-colors">{service.name}</p>
-          <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+    <Card className="flex flex-col justify-between p-4 shadow-sm transition-all hover:shadow-md border-border/50 bg-card/50">
+      <div className="mb-4 flex flex-col gap-3">
+        <Link href={`/services/${service.id}`} className="group flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <StatusLabel status={service.status} />
+            <span className="truncate font-semibold text-foreground group-hover:text-primary transition-colors">
+              {service.name}
+            </span>
+          </div>
+          <p className="ml-4 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="font-medium text-foreground/70">{service.server?.name ?? "External"}</span>
             <span>·</span>
             <span>{service.monitorType}</span>
+            <span className="hidden sm:inline">· {service.runtimeType}</span>
           </p>
-        </div>
-      </Link>
-      <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
-        <span className="hidden sm:inline">{service.runtimeType}</span>
+        </Link>
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-border/50 pt-3">
         <EnvironmentBadge environment={service.environment} />
         <GroupSelect service={service} groups={groups} onChanged={onChanged} />
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -107,6 +112,7 @@ export function ServicesListClient({
 }) {
   const router = useRouter();
   const [services, setServices] = useState(initialServices);
+  const [searchQuery, setSearchQuery] = useState("");
 
   async function refresh() {
     const data = await apiClientFetch<{ services: ServiceSummary[] }>("/services");
@@ -114,8 +120,13 @@ export function ServicesListClient({
     router.refresh();
   }
 
+  const filteredServices = services.filter((s) => {
+    const q = searchQuery.toLowerCase();
+    return s.name.toLowerCase().includes(q) || (s.server?.name ?? "External").toLowerCase().includes(q);
+  });
+
   const grouped = new Map<string, { id: string | null; name: string; services: ServiceSummary[] }>();
-  for (const service of services) {
+  for (const service of filteredServices) {
     const key = service.group?.id ?? "__ungrouped__";
     if (!grouped.has(key)) {
       grouped.set(key, { id: service.group?.id ?? null, name: service.group?.name ?? "Ungrouped", services: [] });
@@ -130,8 +141,24 @@ export function ServicesListClient({
 
   return (
     <div className="flex flex-col gap-8">
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input 
+          placeholder="Search services..." 
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 bg-background"
+        />
+      </div>
+
+      {sections.length === 0 && (
+        <div className="flex h-32 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+          No services found.
+        </div>
+      )}
+
       {sections.map((section) => (
-        <div key={section.id ?? "ungrouped"} className="flex flex-col gap-3">
+        <div key={section.id ?? "ungrouped"} className="flex flex-col gap-4">
           <div className="flex items-center justify-between px-1">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground/80">
               {section.name}
@@ -151,13 +178,11 @@ export function ServicesListClient({
               </Button>
             )}
           </div>
-          <Card className="overflow-hidden border-border/50 py-0 shadow-sm transition-shadow hover:shadow-md">
-            <div className="divide-y divide-border/50">
-              {section.services.map((service) => (
-                <ServiceRow key={service.id} service={service} groups={groups} onChanged={refresh} />
-              ))}
-            </div>
-          </Card>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {section.services.map((service) => (
+              <ServiceCard key={service.id} service={service} groups={groups} onChanged={refresh} />
+            ))}
+          </div>
         </div>
       ))}
     </div>
