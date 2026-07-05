@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Environment {
+  PRODUCTION
+  STAGING
+  DEVELOPMENT
+}
+
+enum ConnectionStatus {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+}
+
+enum MonitorType {
+  HTTP
+  TCP
+  SSH_RUNTIME
+}
+
+enum RuntimeType {
+  DOCKER
+  PM2
+  SYSTEMD
+  EXTERNAL
+  UNKNOWN
+}
+
+enum ServiceStatus {
+  UP
+  DOWN
+  DEGRADED
+  UNKNOWN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Server {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  host        String
+  sshPort     Int    @default(22)
+  sshUsername String?
+
+  // SSH private key is stored encrypted (AES-256-GCM). Plaintext never touches this table.
+  encryptedSshPrivateKey String?
+  sshKeyIv               String?
+  sshKeyAuthTag          String?
+
+  // Trust-on-first-connect host key fingerprint (SHA256 of host key). See docs/SSH_SECURITY.md.
+  sshHostKeyFingerprint String?
+
+  environment        Environment      @default(PRODUCTION)
+  provider           String?
+  projectDirectories String[]         @default([])
+  connectionStatus   ConnectionStatus @default(UNKNOWN)
+  lastConnectedAt    DateTime?
+  lastConnectionError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services  Service[]
+  auditLogs AuditLog[]
+
+  @@index([connectionStatus])
+  @@map("servers")
+}
+
+model ServiceGroup {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  services Service[]
+
+  @@map("service_groups")
+}
+
+model Service {
+  id       String  @id @default(cuid())
+  serverId String?
+  server   Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  groupId String?
+  group   ServiceGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  name        String
+  description String?
+  environment Environment @default(PRODUCTION)
+
+  monitorType MonitorType
+  runtimeType RuntimeType @default(UNKNOWN)
+
+  // HTTP / TCP monitoring config
+  url                  String?
+  host                 String?
+  port                 Int?
+  expectedStatusCode   Int?    @default(200)
+  timeoutMs            Int     @default(5000)
+  checkIntervalSeconds Int     @default(60)
+  failureThreshold     Int     @default(2)
+  notificationsEnabled Boolean @default(true)
+
+  // Current monitoring state
+  status              ServiceStatus @default(UNKNOWN)
+  lastCheckedAt       DateTime?
+  nextCheckAt         DateTime?
+  consecutiveFailures Int           @default(0)
+
+  // Runtime mapping (SSH_RUNTIME monitor type)
+  dockerContainerName String?
+  pm2ProcessName      String?
+  systemdUnitName     String?
+  workingDirectory    String?
+
+  // Repository mapping
+  repositoryUrl      String?
+  repositoryName     String?
+  branch             String?
+  lastKnownCommitSha String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checkResults CheckResult[]
+  incidents    Incident[]
+  auditLogs    AuditLog[]
+
+  @@index([nextCheckAt])
+  @@index([serverId])
+  @@index([groupId])
+  @@map("services")
+}
+
+model CheckResult {
+  id             String        @id @default(cuid())
+  serviceId      String
+  service        Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  status         ServiceStatus
+  responseTimeMs Int?
+  statusCode     Int?
+  errorCode      String?
+  errorSummary   String?
+  checkedAt      DateTime      @default(now())
+
+  @@index([serviceId, checkedAt])
+  @@map("check_results")
+}
+
+model Incident {
+  id              String    @id @default(cuid())
+  serviceId       String
+  service         Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  startedAt       DateTime  @default(now())
+  resolvedAt      DateTime?
+  initialError    String?
+  latestError     String?
+  durationSeconds Int?
+  createdAt       DateTime  @default(now())
+
+  @@index([serviceId, startedAt])
+  @@map("incidents")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  serverId  String?
+  server    Server?  @relation(fields: [serverId], references: [id], onDelete: SetNull)
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  action    String
+  result    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
