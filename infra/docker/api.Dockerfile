@@ -21,6 +21,7 @@ COPY packages/shared    ./packages/shared
 COPY packages/database  ./packages/database
 COPY apps/api           ./apps/api
 RUN pnpm --filter @watchtower/database generate
+RUN pnpm --filter @watchtower/shared build
 RUN pnpm --filter @watchtower/api build
 
 # ── Runner ────────────────────────────────────────────────────────────────────
@@ -35,7 +36,8 @@ COPY --from=build --chown=apiuser:nodejs /app/node_modules                  ./no
 COPY --from=build --chown=apiuser:nodejs /app/apps/api/node_modules         ./apps/api/node_modules
 COPY --from=build --chown=apiuser:nodejs /app/apps/api/dist                 ./apps/api/dist
 COPY --from=build --chown=apiuser:nodejs /app/apps/api/package.json        ./apps/api/package.json
-COPY --from=build --chown=apiuser:nodejs /app/packages/shared               ./packages/shared
+COPY --from=build --chown=apiuser:nodejs /app/packages/shared/dist        ./packages/shared/dist
+COPY --from=build --chown=apiuser:nodejs /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=build --chown=apiuser:nodejs /app/packages/database             ./packages/database
 
 USER apiuser
