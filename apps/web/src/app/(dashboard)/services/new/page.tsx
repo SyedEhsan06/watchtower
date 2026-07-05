@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { apiServerFetch } from "@/lib/api-server";
 import type { ServerSummary, ServiceGroupSummary } from "@/lib/types";
 import { NewServiceForm } from "./new-service-form";
@@ -43,7 +46,12 @@ export default async function NewServicePage({
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 p-4 md:p-6">
-      <h1 className="text-lg font-semibold">Add Service</h1>
+      <div className="flex items-center gap-3">
+        <Button variant="outline" size="icon" className="h-8 w-8" render={<Link href="/services" />}>
+          <ChevronLeft className="size-4" />
+        </Button>
+        <h1 className="text-lg font-semibold">Add Service</h1>
+      </div>
       <NewServiceForm servers={servers} groups={groups} prefill={prefill} />
     </div>
   );

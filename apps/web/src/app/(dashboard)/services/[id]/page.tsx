@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusLabel } from "@/components/status-dot";
 import { EnvironmentBadge } from "@/components/environment-badge";
-import { Pencil } from "lucide-react";
+import { Pencil, ChevronLeft } from "lucide-react";
 import { CheckNowButton } from "./check-now-button";
 import { LogViewer } from "@/components/log-viewer";
 import { RestartButton } from "@/components/restart-button";
@@ -58,11 +58,15 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold">{service.name}</h1>
-            <EnvironmentBadge environment={service.environment} />
-          </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="icon" className="h-8 w-8" render={<Link href="/services" />}>
+            <ChevronLeft className="size-4" />
+          </Button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold">{service.name}</h1>
+              <EnvironmentBadge environment={service.environment} />
+            </div>
           <p className="text-sm text-muted-foreground">
             {service.server ? (
               <Link href={`/servers/${service.server.id}`} className="hover:underline">
@@ -74,6 +78,7 @@ export default async function ServiceDetailPage({ params }: { params: Promise<{ 
             {" · "}
             {service.monitorType}
           </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <StatusLabel status={service.status} />

@@ -1,0 +1,25 @@
+# Watchtower — append this block to the shared Caddyfile at /opt/travelcrm/infra/Caddyfile
+
+watchtower.sydinnovations.com {
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+  }
+
+  reverse_proxy watchtower-web:3000
+}
+
+api.watchtower.sydinnovations.com {
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+  }
+
+  reverse_proxy watchtower-api:4000
+}
