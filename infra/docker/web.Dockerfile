@@ -30,6 +30,7 @@ ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
 ENV NEXT_TELEMETRY_DISABLED=1
 
+RUN pnpm --filter @watchtower/shared build
 RUN pnpm --filter @watchtower/web build
 
 # ── Runner ────────────────────────────────────────────────────────────────────
