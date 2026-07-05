@@ -35,6 +35,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         secure: isProduction,
         sameSite: "lax",
         path: "/",
+        domain: isProduction ? ".watchtower.sydinnovations.com" : undefined,
         expires: session.expiresAt,
       });
 
@@ -47,7 +48,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     if (sessionId) {
       await destroySession(sessionId);
     }
-    reply.clearCookie(SESSION_COOKIE_NAME, { path: "/" });
+    reply.clearCookie(SESSION_COOKIE_NAME, { 
+      path: "/",
+      domain: isProduction ? ".watchtower.sydinnovations.com" : undefined
+    });
     return { success: true };
   });
 
