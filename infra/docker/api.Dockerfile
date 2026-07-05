@@ -38,6 +38,7 @@ COPY --from=build --chown=apiuser:nodejs /app/apps/api/dist                 ./ap
 COPY --from=build --chown=apiuser:nodejs /app/apps/api/package.json        ./apps/api/package.json
 COPY --from=build --chown=apiuser:nodejs /app/packages/shared/dist        ./packages/shared/dist
 COPY --from=build --chown=apiuser:nodejs /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=build --chown=apiuser:nodejs /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=build --chown=apiuser:nodejs /app/packages/database             ./packages/database
 
 USER apiuser
