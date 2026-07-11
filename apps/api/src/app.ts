@@ -21,8 +21,16 @@ export async function buildApp() {
   });
 
   await app.register(helmet);
+  // APP_URLS is a comma-separated allowlist for local dev (multiple ports
+  // across concurrent projects on one machine); falls back to the single
+  // APP_URL/localhost:3000 default if unset, so production (one real
+  // origin) doesn't need to change.
+  const allowedOrigins = (process.env.APP_URLS ?? process.env.APP_URL ?? "http://localhost:3000")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
   await app.register(cors, {
-    origin: process.env.APP_URL ?? "http://localhost:3000",
+    origin: allowedOrigins,
     credentials: true,
   });
   await app.register(cookie);

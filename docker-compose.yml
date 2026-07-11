@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: watchtower
       POSTGRES_DB: watchtower
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       - watchtower-postgres-data:/var/lib/postgresql/data
 
