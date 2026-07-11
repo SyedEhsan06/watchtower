@@ -49,6 +49,7 @@ model User {
 
   sessions  Session[]
   auditLogs AuditLog[]
+  apiKeys   ApiKey[]
 
   @@map("users")
 }
@@ -92,6 +93,7 @@ model Server {
 
   services  Service[]
   auditLogs AuditLog[]
+  apiKeys   ApiKey[]
 
   @@index([connectionStatus])
   @@map("servers")
@@ -210,6 +212,31 @@ model AuditLog {
 
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model ApiKey {
+  id      String  @id @default(cuid())
+  name    String
+  keyHash String  @unique
+  // First several chars of the plaintext key, stored so the UI can show
+  // "sk_wt_a1b2..." without ever retaining the full key after creation.
+  keyPrefix String
+
+  // Every key is scoped to exactly one server. Nullable at the schema level
+  // to leave room for a future org-wide key, but not exercised by app code
+  // today — every key created here always has a serverId.
+  serverId String?
+  server   Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  createdByUserId String
+  createdByUser   User   @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([serverId])
+  @@map("api_keys")
 }
 
 model PushSubscription {
