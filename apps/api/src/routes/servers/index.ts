@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { createServerSchema, updateServerSchema, testConnectionSchema } from "@watchtower/shared";
+import { createServerSchema, updateServerSchema, testConnectionSchema, createApiKeySchema } from "@watchtower/shared";
 import { prisma } from "@watchtower/database";
 import { notFound, ApiError } from "../../utils/errors.js";
 import { serverPublicSelect } from "../../modules/servers/select.js";
@@ -8,6 +8,7 @@ import { loadMasterEncryptionKey } from "../../modules/crypto/master-key.js";
 import { testSshConnection } from "../../modules/ssh/test-connection.js";
 import { loadServerSshParams } from "../../modules/ssh/server-credentials.js";
 import { scanServer } from "../../modules/scan/scan-server.js";
+import { createApiKey } from "../../modules/auth/api-key.js";
 
 export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook("preHandler", fastify.authenticate);
@@ -175,5 +176,54 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
     const sshParams = await loadServerSshParams(request.params.id);
     const processes = await listPm2Processes(sshParams);
     return { processes };
+  });
+
+  // --- API key management (session-auth only; the keys these mint are what
+  // unlocks the parallel /external/servers/:id/* routes for machine callers). ---
+
+  fastify.post<{ Params: { id: string } }>("/:id/api-keys", async (request, reply) => {
+    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    if (!server) throw notFound("Server not found");
+
+    const body = createApiKeySchema.parse(request.body);
+    const created = await createApiKey({
+      name: body.name,
+      serverId: request.params.id,
+      createdByUserId: request.user!.id,
+    });
+
+    reply.status(201);
+    // plaintextKey is returned ONLY here, this one time. It is never stored
+    // or retrievable again after this response.
+    return { apiKey: created };
+  });
+
+  fastify.get<{ Params: { id: string } }>("/:id/api-keys", async (request) => {
+    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    if (!server) throw notFound("Server not found");
+
+    const keys = await prisma.apiKey.findMany({
+      where: { serverId: request.params.id },
+      select: {
+        id: true,
+        name: true,
+        keyPrefix: true,
+        createdAt: true,
+        lastUsedAt: true,
+        revokedAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    return { apiKeys: keys };
+  });
+
+  fastify.delete<{ Params: { id: string; keyId: string } }>("/:id/api-keys/:keyId", async (request, reply) => {
+    const key = await prisma.apiKey.findUnique({ where: { id: request.params.keyId } });
+    if (!key || key.serverId !== request.params.id) throw notFound("API key not found");
+
+    if (!key.revokedAt) {
+      await prisma.apiKey.update({ where: { id: key.id }, data: { revokedAt: new Date() } });
+    }
+    reply.status(204);
   });
 };

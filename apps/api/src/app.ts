@@ -5,6 +5,7 @@ import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import { loggerOptions } from "./utils/logger.js";
 import authPlugin from "./plugins/auth.js";
+import apiKeyAuthPlugin from "./plugins/api-key-auth.js";
 import errorHandlerPlugin from "./plugins/error-handler.js";
 import { authRoutes } from "./routes/auth/index.js";
 import { serverRoutes } from "./routes/servers/index.js";
@@ -13,6 +14,7 @@ import { serviceGroupRoutes } from "./routes/service-groups/index.js";
 import { incidentRoutes } from "./routes/incidents/index.js";
 import { auditRoutes } from "./routes/audit/index.js";
 import { pushRoutes } from "./routes/push/index.js";
+import { externalRoutes } from "./routes/external/index.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -59,6 +61,7 @@ export async function buildApp() {
 
   await app.register(errorHandlerPlugin);
   await app.register(authPlugin);
+  await app.register(apiKeyAuthPlugin);
 
   await app.register(authRoutes, { prefix: "/auth" });
   await app.register(serverRoutes, { prefix: "/servers" });
@@ -67,6 +70,7 @@ export async function buildApp() {
   await app.register(incidentRoutes, { prefix: "/incidents" });
   await app.register(auditRoutes, { prefix: "/audit-logs" });
   await app.register(pushRoutes, { prefix: "/push" });
+  await app.register(externalRoutes, { prefix: "/external" });
 
   app.get("/health", async () => ({ status: "ok" }));
 
