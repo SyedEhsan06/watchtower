@@ -8,6 +8,7 @@ import { DockerTab } from "./docker-tab";
 import { Pm2Tab } from "./pm2-tab";
 import { ServerMetrics } from "./server-metrics";
 import { RepositoriesTab } from "./repositories-tab";
+import { ApiAccessTab } from "./api-access-tab";
 
 const hasSsh = (server: ServerSummary) => Boolean(server.sshUsername);
 
@@ -28,6 +29,7 @@ export function ServerTabs({ server, services }: { server: ServerSummary; servic
         <TabsTrigger value="docker">Docker</TabsTrigger>
         <TabsTrigger value="pm2">PM2</TabsTrigger>
         <TabsTrigger value="repositories">Repositories</TabsTrigger>
+        <TabsTrigger value="api-access">API Access</TabsTrigger>
         <TabsTrigger value="settings">Settings</TabsTrigger>
       </TabsList>
 
@@ -80,6 +82,10 @@ export function ServerTabs({ server, services }: { server: ServerSummary; servic
         ) : (
           <NoSshNotice />
         )}
+      </TabsContent>
+
+      <TabsContent value="api-access">
+        <ApiAccessTab serverId={server.id} />
       </TabsContent>
 
       <TabsContent value="settings" className="flex flex-col gap-4">
