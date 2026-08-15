@@ -9,12 +9,15 @@ import { testSshConnection } from "../../modules/ssh/test-connection.js";
 import { loadServerSshParams } from "../../modules/ssh/server-credentials.js";
 import { scanServer } from "../../modules/scan/scan-server.js";
 import { createApiKey } from "../../modules/auth/api-key.js";
+import { requireWorkspaceAdmin, requireWorkspaceId } from "../../modules/workspaces/context.js";
 
 export const serverRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook("preHandler", fastify.authenticate);
+  fastify.addHook("preHandler", fastify.requireWorkspace);
 
-  fastify.get("/", async () => {
+  fastify.get("/", async (request) => {
+    const workspaceId = requireWorkspaceId(request);
     const servers = await prisma.server.findMany({
+      where: { workspaceId },
       select: { ...serverPublicSelect, _count: { select: { services: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -22,8 +25,9 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/:id", async (request) => {
+    const workspaceId = requireWorkspaceId(request);
     const server = await prisma.server.findUnique({
-      where: { id: request.params.id },
+      where: { id: request.params.id, workspaceId },
       select: serverPublicSelect,
     });
     if (!server) throw notFound("Server not found");
@@ -47,6 +51,8 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   fastify.post("/", async (request, reply) => {
+    requireWorkspaceAdmin(request);
+    const workspaceId = requireWorkspaceId(request);
     const body = createServerSchema.parse(request.body);
     const { sshPrivateKey, ...rest } = body;
 
@@ -62,7 +68,7 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const server = await prisma.server.create({
-      data: { ...rest, ...encryptedFields },
+      data: { ...rest, ...encryptedFields, workspaceId },
       select: serverPublicSelect,
     });
 
@@ -71,10 +77,12 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.patch<{ Params: { id: string } }>("/:id", async (request) => {
+    requireWorkspaceAdmin(request);
+    const workspaceId = requireWorkspaceId(request);
     const body = updateServerSchema.parse(request.body);
     const { sshPrivateKey, ...rest } = body;
 
-    const existing = await prisma.server.findUnique({ where: { id: request.params.id } });
+    const existing = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!existing) throw notFound("Server not found");
 
     let encryptedFields: { encryptedSshPrivateKey: string; sshKeyIv: string; sshKeyAuthTag: string } | undefined;
@@ -97,10 +105,12 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
-    const existing = await prisma.server.findUnique({ where: { id: request.params.id } });
+    requireWorkspaceAdmin(request);
+    const workspaceId = requireWorkspaceId(request);
+    const existing = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!existing) throw notFound("Server not found");
 
-    await prisma.server.delete({ where: { id: request.params.id } });
+    await prisma.server.delete({ where: { id: existing.id } });
     reply.status(204);
   });
 
@@ -109,7 +119,9 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
     "/:id/test",
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (request) => {
-      const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+      requireWorkspaceAdmin(request);
+      const workspaceId = requireWorkspaceId(request);
+      const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
       if (!server) throw notFound("Server not found");
 
       const sshParams = await loadServerSshParams(request.params.id);
@@ -117,7 +129,7 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const result = await testSshConnection(sshParams);
         await prisma.server.update({
-          where: { id: request.params.id },
+          where: { id: server.id },
           data: {
             connectionStatus: "ONLINE",
             lastConnectedAt: new Date(),
@@ -129,7 +141,7 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         const message = err instanceof ApiError ? err.message : "Connection failed";
         await prisma.server.update({
-          where: { id: request.params.id },
+          where: { id: server.id },
           data: { connectionStatus: "OFFLINE", lastConnectionError: message },
         });
         throw err;
@@ -141,7 +153,9 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
     "/:id/scan",
     { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
     async (request) => {
-      const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+      requireWorkspaceAdmin(request);
+      const workspaceId = requireWorkspaceId(request);
+      const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
       if (!server) throw notFound("Server not found");
 
       return scanServer(server);
@@ -149,7 +163,8 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   fastify.get<{ Params: { id: string } }>("/:id/metrics", async (request) => {
-    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    const workspaceId = requireWorkspaceId(request);
+    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!server) throw notFound("Server not found");
 
     const { collectSystemMetrics } = await import("../../modules/scan/system-metrics.js");
@@ -159,7 +174,8 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/:id/docker", async (request) => {
-    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    const workspaceId = requireWorkspaceId(request);
+    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!server) throw notFound("Server not found");
 
     const { listDockerContainers } = await import("../../modules/docker/docker.js");
@@ -169,7 +185,8 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/:id/pm2", async (request) => {
-    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    const workspaceId = requireWorkspaceId(request);
+    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!server) throw notFound("Server not found");
 
     const { listPm2Processes } = await import("../../modules/pm2/pm2.js");
@@ -182,13 +199,16 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   // unlocks the parallel /external/servers/:id/* routes for machine callers). ---
 
   fastify.post<{ Params: { id: string } }>("/:id/api-keys", async (request, reply) => {
-    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    requireWorkspaceAdmin(request);
+    const workspaceId = requireWorkspaceId(request);
+    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!server) throw notFound("Server not found");
 
     const body = createApiKeySchema.parse(request.body);
     const created = await createApiKey({
       name: body.name,
       serverId: request.params.id,
+      workspaceId,
       createdByUserId: request.user!.id,
     });
 
@@ -199,11 +219,12 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/:id/api-keys", async (request) => {
-    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    const workspaceId = requireWorkspaceId(request);
+    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!server) throw notFound("Server not found");
 
     const keys = await prisma.apiKey.findMany({
-      where: { serverId: request.params.id },
+      where: { serverId: request.params.id, workspaceId },
       select: {
         id: true,
         name: true,
@@ -218,8 +239,10 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.delete<{ Params: { id: string; keyId: string } }>("/:id/api-keys/:keyId", async (request, reply) => {
-    const key = await prisma.apiKey.findUnique({ where: { id: request.params.keyId } });
-    if (!key || key.serverId !== request.params.id) throw notFound("API key not found");
+    requireWorkspaceAdmin(request);
+    const workspaceId = requireWorkspaceId(request);
+    const key = await prisma.apiKey.findFirst({ where: { id: request.params.keyId, serverId: request.params.id, workspaceId } });
+    if (!key) throw notFound("API key not found");
 
     if (!key.revokedAt) {
       await prisma.apiKey.update({ where: { id: key.id }, data: { revokedAt: new Date() } });

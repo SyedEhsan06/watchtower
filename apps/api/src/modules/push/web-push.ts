@@ -20,11 +20,12 @@ function ensureConfigured() {
 export async function sendPushToAllSubscriptions(payload: {
   title: string;
   body: string;
+  workspaceId: string;
 }): Promise<void> {
   ensureConfigured();
   if (!configured) return;
 
-  const subscriptions = await prisma.pushSubscription.findMany();
+  const subscriptions = await prisma.pushSubscription.findMany({ where: { workspaceId: payload.workspaceId } });
   const message = JSON.stringify(payload);
 
   await Promise.all(

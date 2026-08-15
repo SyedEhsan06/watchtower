@@ -10,12 +10,12 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function SidebarNav() {
+export function SidebarNav({ isPlatformOwner }: { isPlatformOwner: boolean }) {
   const pathname = usePathname();
 
   return (
     <nav className="flex flex-col gap-1 p-3">
-      {SIDEBAR_NAV_ITEMS.map((item) => {
+      {SIDEBAR_NAV_ITEMS.filter((item) => !item.ownerOnly || isPlatformOwner).map((item) => {
         const active = isActive(pathname, item.href);
         const Icon = item.icon;
         return (

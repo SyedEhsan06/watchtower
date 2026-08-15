@@ -10,14 +10,16 @@ import { getSystemdLogs, getSystemdStatus, restartSystemdUnit } from "../../modu
 import { getGitInfoForDirectory } from "../../modules/git/git.js";
 import { recordAuditLog } from "../../modules/audit/audit-log.js";
 import { restartConfirmSchema } from "./restart-schema.js";
+import { requireWorkspaceAdmin, requireWorkspaceId } from "../../modules/workspaces/context.js";
 
 export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook("preHandler", fastify.authenticate);
+  fastify.addHook("preHandler", fastify.requireWorkspace);
 
   fastify.get("/", async (request) => {
+    const workspaceId = requireWorkspaceId(request);
     const { serverId } = request.query as { serverId?: string };
     const services = await prisma.service.findMany({
-      where: serverId ? { serverId } : undefined,
+      where: { workspaceId, ...(serverId ? { serverId } : {}) },
       include: {
         server: { select: { id: true, name: true, environment: true } },
         group: { select: { id: true, name: true } },
@@ -28,8 +30,9 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/:id", async (request) => {
-    const service = await prisma.service.findUnique({
-      where: { id: request.params.id },
+    const workspaceId = requireWorkspaceId(request);
+    const service = await prisma.service.findFirst({
+      where: { id: request.params.id, workspaceId },
       include: {
         server: { select: { id: true, name: true, environment: true } },
         group: { select: { id: true, name: true } },
@@ -40,11 +43,22 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.post("/", async (request, reply) => {
+    requireWorkspaceAdmin(request);
+    const workspaceId = requireWorkspaceId(request);
     const body = createServiceSchema.parse(request.body);
+
+    if (body.serverId) {
+      const server = await prisma.server.findFirst({ where: { id: body.serverId, workspaceId }, select: { id: true } });
+      if (!server) throw notFound("Server not found");
+    }
+    if (body.groupId) {
+      const group = await prisma.serviceGroup.findFirst({ where: { id: body.groupId, workspaceId }, select: { id: true } });
+      if (!group) throw notFound("Group not found");
+    }
 
     const nextCheckAt = new Date();
     const service = await prisma.service.create({
-      data: { ...body, nextCheckAt },
+      data: { ...body, workspaceId, nextCheckAt },
     });
 
     reply.status(201);
@@ -52,10 +66,17 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.patch<{ Params: { id: string } }>("/:id", async (request) => {
+    requireWorkspaceAdmin(request);
+    const workspaceId = requireWorkspaceId(request);
     const body = updateServiceSchema.parse(request.body);
 
-    const existing = await prisma.service.findUnique({ where: { id: request.params.id } });
+    const existing = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!existing) throw notFound("Service not found");
+
+    if (body.groupId) {
+      const group = await prisma.serviceGroup.findFirst({ where: { id: body.groupId, workspaceId }, select: { id: true } });
+      if (!group) throw notFound("Group not found");
+    }
 
     const service = await prisma.service.update({
       where: { id: request.params.id },
@@ -65,19 +86,22 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
-    const existing = await prisma.service.findUnique({ where: { id: request.params.id } });
+    requireWorkspaceAdmin(request);
+    const workspaceId = requireWorkspaceId(request);
+    const existing = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!existing) throw notFound("Service not found");
 
-    await prisma.service.delete({ where: { id: request.params.id } });
+    await prisma.service.delete({ where: { id: existing.id } });
     reply.status(204);
   });
 
   fastify.get<{ Params: { id: string } }>("/:id/checks", async (request) => {
-    const service = await prisma.service.findUnique({ where: { id: request.params.id } });
+    const workspaceId = requireWorkspaceId(request);
+    const service = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!service) throw notFound("Service not found");
 
     const checks = await prisma.checkResult.findMany({
-      where: { serviceId: request.params.id },
+      where: { serviceId: request.params.id, workspaceId },
       orderBy: { checkedAt: "desc" },
       take: 100,
     });
@@ -88,32 +112,36 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
     "/:id/check",
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (request) => {
-      const service = await prisma.service.findUnique({ where: { id: request.params.id } });
+      requireWorkspaceAdmin(request);
+      const workspaceId = requireWorkspaceId(request);
+      const service = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
       if (!service) throw notFound("Service not found");
 
       await executeServiceCheck(service);
 
-      const updated = await prisma.service.findUnique({ where: { id: request.params.id } });
+      const updated = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
       return { service: updated };
     }
   );
 
   fastify.get<{ Params: { id: string } }>("/:id/incidents", async (request) => {
-    const service = await prisma.service.findUnique({ where: { id: request.params.id } });
+    const workspaceId = requireWorkspaceId(request);
+    const service = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!service) throw notFound("Service not found");
 
     const incidents = await prisma.incident.findMany({
-      where: { serviceId: request.params.id },
+      where: { serviceId: request.params.id, workspaceId },
       orderBy: { startedAt: "desc" },
     });
     return { incidents };
   });
 
   fastify.get<{ Params: { id: string } }>("/:id/logs", async (request) => {
+    const workspaceId = requireWorkspaceId(request);
     const { lines: linesRaw } = request.query as { lines?: string };
     const lines = Math.min(1000, Math.max(1, Number(linesRaw) || 100));
 
-    const service = await prisma.service.findUnique({ where: { id: request.params.id } });
+    const service = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!service) throw notFound("Service not found");
     if (!service.serverId) throw badRequest("This service has no associated server");
 
@@ -134,7 +162,8 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/:id/docker/inspect", async (request) => {
-    const service = await prisma.service.findUnique({ where: { id: request.params.id } });
+    const workspaceId = requireWorkspaceId(request);
+    const service = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!service) throw notFound("Service not found");
     if (!service.serverId || service.runtimeType !== "DOCKER" || !service.dockerContainerName) {
       throw badRequest("This service is not mapped to a Docker container");
@@ -146,7 +175,8 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/:id/git", async (request) => {
-    const service = await prisma.service.findUnique({ where: { id: request.params.id } });
+    const workspaceId = requireWorkspaceId(request);
+    const service = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
     if (!service) throw notFound("Service not found");
     if (!service.serverId || !service.workingDirectory) {
       throw badRequest("This service has no working directory configured");
@@ -162,7 +192,9 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
     { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
     async (request) => {
       const body = restartConfirmSchema.parse(request.body);
-      const service = await prisma.service.findUnique({ where: { id: request.params.id } });
+      requireWorkspaceAdmin(request);
+      const workspaceId = requireWorkspaceId(request);
+      const service = await prisma.service.findFirst({ where: { id: request.params.id, workspaceId } });
       if (!service) throw notFound("Service not found");
       if (body.confirmServiceName !== service.name) {
         throw badRequest("Confirmation name does not match service name");
@@ -186,6 +218,7 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
       } catch (err) {
         await recordAuditLog({
           userId,
+          workspaceId,
           serverId: service.serverId,
           serviceId: service.id,
           action: "RESTART_SERVICE",
@@ -197,6 +230,7 @@ export const serviceRoutes: FastifyPluginAsync = async (fastify) => {
 
       await recordAuditLog({
         userId,
+        workspaceId,
         serverId: service.serverId,
         serviceId: service.id,
         action: "RESTART_SERVICE",

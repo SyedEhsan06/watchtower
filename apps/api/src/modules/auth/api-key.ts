@@ -36,6 +36,7 @@ export interface CreatedApiKey {
 export async function createApiKey(params: {
   name: string;
   serverId: string;
+  workspaceId: string;
   createdByUserId: string;
 }): Promise<CreatedApiKey> {
   const plaintextKey = `${KEY_PREFIX}${randomBytes(KEY_RANDOM_BYTES).toString("base64url")}`;
@@ -48,6 +49,7 @@ export async function createApiKey(params: {
       keyHash,
       keyPrefix,
       serverId: params.serverId,
+      workspaceId: params.workspaceId,
       createdByUserId: params.createdByUserId,
     },
   });

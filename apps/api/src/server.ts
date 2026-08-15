@@ -19,8 +19,17 @@ try {
   process.exit(1);
 }
 
-const stopScheduler = startScheduler(app.log);
-const stopRetentionJob = startRetentionJob(app.log);
+// Development APIs often point at the shared Supabase database. Running a
+// second in-process scheduler there would duplicate checks and, worse, could
+// write results using a different SSH encryption key than production. Keep
+// background jobs production-only unless a developer explicitly opts in.
+const backgroundJobsEnabled = process.env.NODE_ENV === "production" || process.env.ENABLE_BACKGROUND_JOBS === "true";
+const stopScheduler = backgroundJobsEnabled ? startScheduler(app.log) : () => undefined;
+const stopRetentionJob = backgroundJobsEnabled ? startRetentionJob(app.log) : () => undefined;
+
+if (!backgroundJobsEnabled) {
+  app.log.info("Background monitoring jobs disabled; set ENABLE_BACKGROUND_JOBS=true for an isolated development database");
+}
 
 async function shutdown() {
   stopScheduler();

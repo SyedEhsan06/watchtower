@@ -4,9 +4,12 @@ An internal monitoring dashboard for servers, Docker containers, PM2 processes,
 systemd services, and HTTP/TCP endpoints — with push notifications and
 installable as a PWA.
 
-This is a single-operator internal tool, not a multi-tenant SaaS. It is
-deliberately simple: no Kubernetes, no message queues, no custom agents. The
-Fastify API talks to your servers over SSH when needed and runs its own
+Watchtower supports multiple isolated projects (tenants). The platform owner
+can create and switch between projects; each project has its own servers,
+services, checks, incidents, audit logs, API keys, and members. Project owners
+and admins manage one project, while members have read-only access to it.
+It is deliberately simple: no Kubernetes, no message queues, no custom agents.
+The Fastify API talks to your servers over SSH when needed and runs its own
 in-process scheduler.
 
 ## Stack
@@ -79,6 +82,12 @@ There is no public signup — users are created via CLI:
 cd apps/api
 pnpm create-user you@example.com "a-strong-password"
 ```
+
+The first user created after the workspace migration becomes the platform
+owner and receives the initial `Default Project`. The owner can create more
+projects from the project switcher and add existing users from Settings.
+Project admins can manage members in their own project but cannot create
+projects or grant platform-owner access.
 
 ### 7. Start the dev servers
 

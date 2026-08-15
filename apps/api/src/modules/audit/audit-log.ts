@@ -2,6 +2,7 @@ import { prisma, Prisma } from "@watchtower/database";
 
 export async function recordAuditLog(entry: {
   userId: string;
+  workspaceId: string;
   serverId?: string;
   serviceId?: string;
   action: string;
@@ -11,6 +12,7 @@ export async function recordAuditLog(entry: {
   await prisma.auditLog.create({
     data: {
       userId: entry.userId,
+      workspaceId: entry.workspaceId,
       serverId: entry.serverId,
       serviceId: entry.serviceId,
       action: entry.action,

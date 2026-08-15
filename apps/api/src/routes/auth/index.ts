@@ -35,11 +35,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         secure: isProduction,
         sameSite: "lax",
         path: "/",
-        domain: isProduction ? ".watchtower.sydinnovations.com" : undefined,
+        domain: isProduction ? ".watchtower.syedehsan.com" : undefined,
         expires: session.expiresAt,
       });
 
-      return { id: user.id, email: user.email };
+    return { id: user.id, email: user.email, isPlatformOwner: user.isPlatformOwner };
     }
   );
 
@@ -50,12 +50,18 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
     reply.clearCookie(SESSION_COOKIE_NAME, { 
       path: "/",
-      domain: isProduction ? ".watchtower.sydinnovations.com" : undefined
+      domain: isProduction ? ".watchtower.syedehsan.com" : undefined
     });
     return { success: true };
   });
 
   fastify.get("/me", { preHandler: fastify.authenticate }, async (request) => {
-    return { id: request.user!.id, email: request.user!.email };
+    return {
+      id: request.user!.id,
+      email: request.user!.email,
+      isPlatformOwner: request.user!.isPlatformOwner,
+      activeWorkspaceId: request.workspaceId,
+      workspaceRole: request.workspaceRole,
+    };
   });
 };

@@ -10,12 +10,12 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function MobileNav() {
+export function MobileNav({ isPlatformOwner }: { isPlatformOwner: boolean }) {
   const pathname = usePathname();
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden">
-      {MOBILE_NAV_ITEMS.map((item) => {
+      {MOBILE_NAV_ITEMS.filter((item) => !item.ownerOnly || isPlatformOwner).map((item) => {
         const active = isActive(pathname, item.href);
         const Icon = item.icon;
         return (

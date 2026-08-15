@@ -7,3 +7,4 @@ export * from "./schemas/server.js";
 export * from "./schemas/service.js";
 export * from "./schemas/service-group.js";
 export * from "./schemas/api-key.js";
+export * from "./schemas/workspace.js";

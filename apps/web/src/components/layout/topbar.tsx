@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { LogOut, Sun, Moon } from "lucide-react";
 import { apiClientFetch } from "@/lib/api-client";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 export function Topbar({ email }: { email: string }) {
   const router = useRouter();
@@ -17,7 +18,10 @@ export function Topbar({ email }: { email: string }) {
 
   return (
     <header className="flex h-14 items-center justify-between border-b px-4 md:px-6">
-      <div className="text-sm font-medium text-muted-foreground">{email}</div>
+      <div className="flex min-w-0 items-center gap-3">
+        <WorkspaceSwitcher />
+        <span className="hidden truncate text-sm text-muted-foreground sm:inline">{email}</span>
+      </div>
       <div className="flex items-center gap-2">
         <ThemeToggle />
         <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">

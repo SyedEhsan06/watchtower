@@ -7,6 +7,7 @@ declare module "fastify" {
   interface FastifyRequest {
     /** Set by requireApiKey once a Bearer key has been resolved. Null otherwise. */
     apiKeyServerId: string | null;
+    apiKeyWorkspaceId: string | null;
   }
   interface FastifyInstance {
     /**
@@ -21,6 +22,7 @@ declare module "fastify" {
 
 const apiKeyAuthPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.decorateRequest("apiKeyServerId", null);
+  fastify.decorateRequest("apiKeyWorkspaceId", null);
 
   fastify.decorate("requireApiKey", async (request: FastifyRequest) => {
     const header = request.headers.authorization;
@@ -35,6 +37,7 @@ const apiKeyAuthPlugin: FastifyPluginAsync = async (fastify) => {
     }
 
     request.apiKeyServerId = record.serverId;
+    request.apiKeyWorkspaceId = record.workspaceId;
   });
 };
 

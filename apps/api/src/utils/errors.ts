@@ -17,6 +17,10 @@ export function unauthorized(message = "Authentication required"): ApiError {
   return new ApiError("UNAUTHORIZED", message, 401);
 }
 
+export function forbidden(message = "You do not have permission to perform this action"): ApiError {
+  return new ApiError("FORBIDDEN", message, 403);
+}
+
 export function notFound(message = "Resource not found"): ApiError {
   return new ApiError("NOT_FOUND", message, 404);
 }

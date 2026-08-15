@@ -1,31 +1,12 @@
 services:
-  watchtower-postgres:
-    image: postgres:17-alpine
-    container_name: watchtower-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: watchtower
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: watchtower
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U watchtower -d watchtower']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   watchtower-migrator:
     build:
       context: .
       dockerfile: infra/docker/migrator.Dockerfile
     container_name: watchtower-migrator
     profiles: ['migrate']
-    depends_on:
-      watchtower-postgres:
-        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://watchtower:${POSTGRES_PASSWORD}@watchtower-postgres:5432/watchtower
+      DATABASE_URL: ${DATABASE_URL}
     restart: 'no'
 
   watchtower-api:
@@ -34,15 +15,12 @@ services:
       dockerfile: infra/docker/api.Dockerfile
     container_name: watchtower-api
     restart: unless-stopped
-    depends_on:
-      watchtower-postgres:
-        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://watchtower:${POSTGRES_PASSWORD}@watchtower-postgres:5432/watchtower
-      APP_URL: https://watchtower.sydinnovations.com
-      API_URL: https://api.watchtower.sydinnovations.com
+      DATABASE_URL: ${DATABASE_URL}
+      APP_URL: https://watchtower.syedehsan.com
+      API_URL: https://api.watchtower.syedehsan.com
       AUTH_SECRET: ${AUTH_SECRET}
       SSH_MASTER_ENCRYPTION_KEY: ${SSH_MASTER_ENCRYPTION_KEY}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
@@ -58,7 +36,7 @@ services:
       context: .
       dockerfile: infra/docker/web.Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://api.watchtower.sydinnovations.com
+        NEXT_PUBLIC_API_URL: https://api.watchtower.syedehsan.com
         NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
     container_name: watchtower-web
     restart: unless-stopped
@@ -67,13 +45,10 @@ services:
     environment:
       NODE_ENV: production
       API_URL: http://watchtower-api:4000
-      NEXT_PUBLIC_API_URL: https://api.watchtower.sydinnovations.com
+      NEXT_PUBLIC_API_URL: https://api.watchtower.syedehsan.com
     networks:
       - default
       - proxy
-
-volumes:
-  pgdata: {}
 
 networks:
   default:
@@ -81,4 +56,4 @@ networks:
   # Join Caddy's shared network so it can reach these containers by name.
   proxy:
     external: true
-    name: travelcrm_default
+    name: sydinnovations-os-prod_default

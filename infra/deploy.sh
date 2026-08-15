@@ -5,8 +5,8 @@ set -euo pipefail
 
 APP_DIR="/opt/watchtower"
 COMPOSE="docker compose -f $APP_DIR/docker-compose.prod.yml --env-file $APP_DIR/.env"
-CADDY_CONTAINER="travelcrm-caddy-1"
-CADDYFILE="/opt/travelcrm/infra/Caddyfile"
+CADDY_CONTAINER="sydinnovations-os-prod-caddy-1"
+CADDYFILE="/opt/sydinnovations-os/infra/Caddyfile"
 
 cd "$APP_DIR"
 
@@ -16,26 +16,20 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-echo "==> [1/5] Pulling latest code..."
+echo "==> [1/4] Using synchronized source..."
 git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
-git pull origin main
 
-echo "==> [2/5] Building containers..."
+echo "==> [2/4] Building containers..."
 $COMPOSE build --parallel
 
-echo "==> [3/5] Starting postgres..."
-$COMPOSE up -d watchtower-postgres
-echo "Waiting for postgres..."
-until $COMPOSE exec -T watchtower-postgres pg_isready -U watchtower -d watchtower -q; do sleep 2; done
+echo "==> [3/4] Running database migrations..."
+$COMPOSE --profile migrate run --rm --no-deps watchtower-migrator
 
-echo "==> [4/5] Running migrations..."
-$COMPOSE --profile migrate run --rm watchtower-migrator
-
-echo "==> [5/5] Restarting app services..."
+echo "==> [4/4] Restarting app services..."
 $COMPOSE up -d --no-deps watchtower-api watchtower-web
 
-echo "==> Ensuring Caddy knows about watchtower.sydinnovations.com..."
-if ! grep -q "watchtower.sydinnovations.com" "$CADDYFILE"; then
+echo "==> Ensuring Caddy knows about watchtower.syedehsan.com..."
+if ! grep -q "watchtower.syedehsan.com" "$CADDYFILE"; then
   echo "" >> "$CADDYFILE"
   cat "$APP_DIR/infra/Caddyfile.watchtower" >> "$CADDYFILE"
   echo "  -> Added watchtower blocks to Caddyfile"

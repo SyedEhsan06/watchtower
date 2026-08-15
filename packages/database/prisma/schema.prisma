@@ -40,18 +40,64 @@ enum ServiceStatus {
   UNKNOWN
 }
 
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  isPlatformOwner Boolean @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   sessions  Session[]
   auditLogs AuditLog[]
   apiKeys   ApiKey[]
+  memberships WorkspaceMember[]
+  createdWorkspaces Workspace[] @relation("WorkspaceCreatedBy")
 
   @@map("users")
+}
+
+model Workspace {
+  id              String   @id @default(cuid())
+  name            String
+  createdByUserId String?
+  createdByUser   User?    @relation("WorkspaceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships       WorkspaceMember[]
+  servers           Server[]
+  serviceGroups     ServiceGroup[]
+  services          Service[]
+  checkResults      CheckResult[]
+  incidents         Incident[]
+  auditLogs         AuditLog[]
+  apiKeys           ApiKey[]
+  pushSubscriptions PushSubscription[]
+
+  @@index([createdByUserId])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
 }
 
 model Session {
@@ -67,6 +113,8 @@ model Session {
 
 model Server {
   id          String @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name        String
   description String?
   host        String
@@ -96,23 +144,30 @@ model Server {
   apiKeys   ApiKey[]
 
   @@index([connectionStatus])
+  @@index([workspaceId])
   @@map("servers")
 }
 
 model ServiceGroup {
   id          String   @id @default(cuid())
-  name        String   @unique
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   services Service[]
 
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
   @@map("service_groups")
 }
 
 model Service {
-  id       String  @id @default(cuid())
+  id          String  @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   serverId String?
   server   Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
 
@@ -164,11 +219,14 @@ model Service {
   @@index([nextCheckAt])
   @@index([serverId])
   @@index([groupId])
+  @@index([workspaceId])
   @@map("services")
 }
 
 model CheckResult {
   id             String        @id @default(cuid())
+  workspaceId    String
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   serviceId      String
   service        Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   status         ServiceStatus
@@ -179,11 +237,14 @@ model CheckResult {
   checkedAt      DateTime      @default(now())
 
   @@index([serviceId, checkedAt])
+  @@index([workspaceId])
   @@map("check_results")
 }
 
 model Incident {
   id              String    @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   serviceId       String
   service         Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   startedAt       DateTime  @default(now())
@@ -194,11 +255,14 @@ model Incident {
   createdAt       DateTime  @default(now())
 
   @@index([serviceId, startedAt])
+  @@index([workspaceId])
   @@map("incidents")
 }
 
 model AuditLog {
   id        String   @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   serverId  String?
@@ -211,11 +275,14 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+  @@index([workspaceId])
   @@map("audit_logs")
 }
 
 model ApiKey {
   id      String  @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name    String
   keyHash String  @unique
   // First several chars of the plaintext key, stored so the UI can show
@@ -236,17 +303,22 @@ model ApiKey {
   revokedAt  DateTime?
 
   @@index([serverId])
+  @@index([workspaceId])
   @@map("api_keys")
 }
 
 model PushSubscription {
   id        String   @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId    String
-  endpoint  String   @unique
+  endpoint  String
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([workspaceId])
+  @@unique([workspaceId, endpoint])
   @@map("push_subscriptions")
 }

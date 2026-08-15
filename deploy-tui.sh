@@ -224,7 +224,7 @@ show_summary() {
     lines+=("$(gum style --bold --foreground 10 '✓ Deploy complete')")
     lines+=("")
     lines+=("  Target  : ${target}")
-    lines+=("  Server  : https://watchtower.sydinnovations.com")
+    lines+=("  Server  : https://watchtower.syedehsan.com")
     [[ -n "$COMMIT_MSG" ]] && lines+=("  Commit  : ${COMMIT_MSG}")
     gum style --border rounded --border-foreground 10 --padding "1 3" "${lines[@]}"
   else
@@ -234,7 +234,7 @@ show_summary() {
     echo ""
     echo -e "  Target  : ${BOLD}${target}${RESET}"
     [[ -n "$COMMIT_MSG" ]] && echo -e "  Commit  : ${DIM}${COMMIT_MSG}${RESET}"
-    echo -e "  Server  : ${CYAN}https://watchtower.sydinnovations.com${RESET}"
+    echo -e "  Server  : ${CYAN}https://watchtower.syedehsan.com${RESET}"
   fi
   echo ""
 }

@@ -53,6 +53,7 @@ export async function executeServiceCheck(service: Service): Promise<void> {
   await prisma.$transaction(async (tx) => {
     await tx.checkResult.create({
       data: {
+        workspaceId: service.workspaceId,
         serviceId: service.id,
         status: outcome.status,
         responseTimeMs: outcome.responseTimeMs,
@@ -76,6 +77,7 @@ export async function executeServiceCheck(service: Service): Promise<void> {
     if (transition.becameDown) {
       await tx.incident.create({
         data: {
+          workspaceId: service.workspaceId,
           serviceId: service.id,
           startedAt: now,
           initialError: outcome.errorSummary,
@@ -85,7 +87,7 @@ export async function executeServiceCheck(service: Service): Promise<void> {
     } else if (transition.nextStatus === "DOWN") {
       // Still down: keep the open incident's latestError current.
       const openIncident = await tx.incident.findFirst({
-        where: { serviceId: service.id, resolvedAt: null },
+        where: { workspaceId: service.workspaceId, serviceId: service.id, resolvedAt: null },
         orderBy: { startedAt: "desc" },
       });
       if (openIncident && outcome.errorSummary) {
@@ -96,7 +98,7 @@ export async function executeServiceCheck(service: Service): Promise<void> {
       }
     } else if (transition.recovered) {
       const openIncident = await tx.incident.findFirst({
-        where: { serviceId: service.id, resolvedAt: null },
+        where: { workspaceId: service.workspaceId, serviceId: service.id, resolvedAt: null },
         orderBy: { startedAt: "desc" },
       });
       if (openIncident) {
@@ -115,16 +117,18 @@ export async function executeServiceCheck(service: Service): Promise<void> {
     await sendPushToAllSubscriptions({
       title: `${service.name} is DOWN`,
       body: `Failed ${transition.nextConsecutiveFailures} consecutive checks. ${outcome.errorSummary ?? ""}`.trim(),
+      workspaceId: service.workspaceId,
     });
   } else if (transition.recovered) {
     const openIncident = await prisma.incident.findFirst({
-      where: { serviceId: service.id },
+      where: { workspaceId: service.workspaceId, serviceId: service.id },
       orderBy: { startedAt: "desc" },
     });
     const durationSeconds = openIncident?.durationSeconds ?? 0;
     await sendPushToAllSubscriptions({
       title: `${service.name} recovered`,
       body: `Downtime: ${formatDuration(durationSeconds)}`,
+      workspaceId: service.workspaceId,
     });
   }
 }

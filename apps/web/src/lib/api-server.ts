@@ -21,7 +21,7 @@ export async function apiServerFetch(path: string, init?: RequestInit): Promise<
   });
 }
 
-export async function getCurrentUser(): Promise<{ id: string; email: string } | null> {
+export async function getCurrentUser(): Promise<{ id: string; email: string; isPlatformOwner?: boolean } | null> {
   const res = await apiServerFetch("/auth/me");
   if (!res.ok) return null;
   return res.json();

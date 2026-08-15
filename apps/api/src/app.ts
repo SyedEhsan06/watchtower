@@ -15,6 +15,7 @@ import { incidentRoutes } from "./routes/incidents/index.js";
 import { auditRoutes } from "./routes/audit/index.js";
 import { pushRoutes } from "./routes/push/index.js";
 import { externalRoutes } from "./routes/external/index.js";
+import { workspaceRoutes } from "./routes/workspaces/index.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -64,6 +65,7 @@ export async function buildApp() {
   await app.register(apiKeyAuthPlugin);
 
   await app.register(authRoutes, { prefix: "/auth" });
+  await app.register(workspaceRoutes, { prefix: "/workspaces" });
   await app.register(serverRoutes, { prefix: "/servers" });
   await app.register(serviceRoutes, { prefix: "/services" });
   await app.register(serviceGroupRoutes, { prefix: "/service-groups" });

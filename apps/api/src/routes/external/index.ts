@@ -30,7 +30,7 @@ export const externalRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { id: string } }>("/servers/:id", async (request) => {
     const server = await prisma.server.findUnique({
-      where: { id: request.params.id },
+      where: { id: request.params.id, workspaceId: request.apiKeyWorkspaceId! },
       select: serverPublicSelect,
     });
     if (!server) throw notFound("Server not found");
@@ -38,7 +38,7 @@ export const externalRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/servers/:id/metrics", async (request) => {
-    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId: request.apiKeyWorkspaceId! } });
     if (!server) throw notFound("Server not found");
 
     const { collectSystemMetrics } = await import("../../modules/scan/system-metrics.js");
@@ -48,7 +48,7 @@ export const externalRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/servers/:id/docker", async (request) => {
-    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId: request.apiKeyWorkspaceId! } });
     if (!server) throw notFound("Server not found");
 
     const { listDockerContainers } = await import("../../modules/docker/docker.js");
@@ -58,7 +58,7 @@ export const externalRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/servers/:id/pm2", async (request) => {
-    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId: request.apiKeyWorkspaceId! } });
     if (!server) throw notFound("Server not found");
 
     const { listPm2Processes } = await import("../../modules/pm2/pm2.js");
@@ -68,11 +68,11 @@ export const externalRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get<{ Params: { id: string } }>("/servers/:id/incidents", async (request) => {
-    const server = await prisma.server.findUnique({ where: { id: request.params.id } });
+    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId: request.apiKeyWorkspaceId! } });
     if (!server) throw notFound("Server not found");
 
     const incidents = await prisma.incident.findMany({
-      where: { service: { serverId: request.params.id } },
+      where: { workspaceId: request.apiKeyWorkspaceId!, service: { serverId: request.params.id, workspaceId: request.apiKeyWorkspaceId! } },
       include: { service: { select: { id: true, name: true, serverId: true } } },
       orderBy: { startedAt: "desc" },
       take: 100,
