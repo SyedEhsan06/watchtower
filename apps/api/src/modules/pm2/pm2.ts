@@ -1,3 +1,4 @@
+import type { Client as SshClient } from "ssh2";
 import { withSshConnection, execCommand } from "../ssh/ssh-client.js";
 import type { SshConnectionParams } from "../ssh/ssh-client.js";
 import { isSafeIdentifier } from "@watchtower/shared";
@@ -22,7 +23,9 @@ interface Pm2JlistEntry {
   pm2_env: { status: string; restart_time: number; pm_uptime: number };
 }
 
-export async function isPm2Available(sshParams: SshConnectionParams): Promise<boolean> {
+export async function isPm2Available(
+  sshParams: SshConnectionParams,
+): Promise<boolean> {
   const { result } = await withSshConnection(sshParams, async (conn) => {
     const check = await execCommand(conn, "which", ["pm2"]);
     return check.code === 0;
@@ -30,11 +33,10 @@ export async function isPm2Available(sshParams: SshConnectionParams): Promise<bo
   return result;
 }
 
-export async function listPm2Processes(sshParams: SshConnectionParams): Promise<Pm2Process[]> {
-  const { result } = await withSshConnection(sshParams, async (conn) => {
-    return execCommand(conn, "pm2", ["jlist"]);
-  });
-
+export async function listPm2ProcessesOn(
+  conn: SshClient,
+): Promise<Pm2Process[]> {
+  const result = await execCommand(conn, "pm2", ["jlist"]);
   if (result.code !== 0) return [];
 
   let parsed: Pm2JlistEntry[];
@@ -57,17 +59,30 @@ export async function listPm2Processes(sshParams: SshConnectionParams): Promise<
   }));
 }
 
+export async function listPm2Processes(
+  sshParams: SshConnectionParams,
+): Promise<Pm2Process[]> {
+  const { result } = await withSshConnection(sshParams, listPm2ProcessesOn);
+  return result;
+}
+
 export async function getPm2Logs(
   sshParams: SshConnectionParams,
   processName: string,
-  lines: number
+  lines: number,
 ): Promise<string> {
   if (!isSafeIdentifier(processName)) {
     throw new ApiError("INVALID_IDENTIFIER", "Invalid process name", 400);
   }
 
   const { result } = await withSshConnection(sshParams, async (conn) => {
-    return execCommand(conn, "pm2", ["logs", processName, "--lines", String(lines), "--nostream"]);
+    return execCommand(conn, "pm2", [
+      "logs",
+      processName,
+      "--lines",
+      String(lines),
+      "--nostream",
+    ]);
   });
 
   return `${result.stdout}${result.stderr}`;
@@ -75,7 +90,7 @@ export async function getPm2Logs(
 
 export async function restartPm2Process(
   sshParams: SshConnectionParams,
-  processName: string
+  processName: string,
 ): Promise<{ success: boolean; message: string }> {
   if (!isSafeIdentifier(processName)) {
     throw new ApiError("INVALID_IDENTIFIER", "Invalid process name", 400);
@@ -86,7 +101,10 @@ export async function restartPm2Process(
   });
 
   if (result.code !== 0) {
-    return { success: false, message: result.stderr.trim() || "Restart failed" };
+    return {
+      success: false,
+      message: result.stderr.trim() || "Restart failed",
+    };
   }
   return { success: true, message: "Process restarted" };
 }

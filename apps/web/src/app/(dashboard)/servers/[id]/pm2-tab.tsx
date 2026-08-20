@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
-import { apiClientFetch, ApiClientError } from "@/lib/api-client";
+import { LiveToolbar } from "@/components/live-toolbar";
+import { useLiveResource } from "@/hooks/use-live-resource";
 import { RefreshCw } from "lucide-react";
 
 interface Pm2Process {
@@ -19,7 +20,34 @@ interface Pm2Process {
   restarts: number;
 }
 
-export function Pm2Tab({ serverId }: { serverId: string }) {
+function ListSkeleton() {
+  return (
+    <Card className="py-0">
+      <div className="divide-y">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div
+            key={index}
+            className="flex items-center justify-between gap-3 px-4 py-3"
+          >
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+            <Skeleton className="h-6 w-24" />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+export function Pm2Tab({
+  serverId,
+  active,
+}: {
+  serverId: string;
+  active: boolean;
+}) {
   function monitorThisHref(process: Pm2Process): string {
     const params = new URLSearchParams({
       serverId,
@@ -30,72 +58,88 @@ export function Pm2Tab({ serverId }: { serverId: string }) {
     return `/services/new?${params.toString()}`;
   }
 
-  const [processes, setProcesses] = useState<Pm2Process[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, refreshing, error, fetchedAt, refresh } =
+    useLiveResource<{
+      processes: Pm2Process[];
+    }>({
+      path: `/servers/${serverId}/pm2`,
+      enabled: active,
+    });
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiClientFetch<{ processes: Pm2Process[] }>(`/servers/${serverId}/pm2`);
-      setProcesses(data.processes);
-    } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : "Failed to load PM2 processes");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverId]);
-
-  if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading PM2 processes...</p>;
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-red-500">{error}</p>
-        <Button size="sm" variant="outline" onClick={load} className="w-fit gap-2">
-          <RefreshCw className="size-4" />
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  if (!processes || processes.length === 0) {
-    return <EmptyState title="No PM2 processes found" description="PM2 may not be installed, or no processes are running." />;
-  }
+  const processes = data?.processes ?? null;
 
   return (
-    <Card className="py-0">
-      <div className="divide-y">
-        {processes.map((p) => (
-          <div key={p.pm2Id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-            <div className="min-w-0">
-              <p className="truncate font-medium">{p.name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                PID {p.pid ?? "—"} · {p.restarts} restarts
-              </p>
+    <div className="flex flex-col gap-3">
+      <LiveToolbar
+        fetchedAt={fetchedAt}
+        refreshing={refreshing}
+        onRefresh={refresh}
+      />
+      {loading && !processes ? (
+        <ListSkeleton />
+      ) : error && !processes ? (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-red-500">{error}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={refresh}
+            className="w-fit gap-2"
+          >
+            <RefreshCw className="size-4" />
+            Retry
+          </Button>
+        </div>
+      ) : !processes || processes.length === 0 ? (
+        <EmptyState
+          title="No PM2 processes found"
+          description="PM2 may not be installed, or no processes are running."
+        />
+      ) : (
+        <>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          <Card className="py-0">
+            <div className="divide-y">
+              {processes.map((process) => (
+                <div
+                  key={process.pm2Id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{process.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      PID {process.pid ?? "—"} · {process.restarts} restarts
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{process.cpuPercent}% CPU</span>
+                    <span>{process.memoryMb}MB</span>
+                    <Badge
+                      variant={
+                        process.status === "online" ? "outline" : "secondary"
+                      }
+                      className={
+                        process.status === "online"
+                          ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                          : ""
+                      }
+                    >
+                      {process.status}
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      render={<Link href={monitorThisHref(process)} />}
+                    >
+                      Monitor This
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{p.cpuPercent}% CPU</span>
-              <span>{p.memoryMb}MB</span>
-              <Badge variant={p.status === "online" ? "outline" : "secondary"} className={p.status === "online" ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400" : ""}>
-                {p.status}
-              </Badge>
-              <Button size="sm" variant="outline" render={<Link href={monitorThisHref(p)} />}>
-                Monitor This
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
+          </Card>
+        </>
+      )}
+    </div>
   );
 }

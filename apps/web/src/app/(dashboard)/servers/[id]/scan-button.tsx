@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ScanSearch } from "lucide-react";
 import { apiClientFetch, ApiClientError } from "@/lib/api-client";
+import { WATCHTOWER_SOFT_REFRESH_EVENT } from "@/hooks/use-live-resource";
 import { toast } from "sonner";
 
 export function ScanServerButton({ serverId }: { serverId: string }) {
@@ -16,6 +17,7 @@ export function ScanServerButton({ serverId }: { serverId: string }) {
     try {
       await apiClientFetch(`/servers/${serverId}/scan`, { method: "POST" });
       toast.success("Scan complete");
+      window.dispatchEvent(new Event(WATCHTOWER_SOFT_REFRESH_EVENT));
       router.refresh();
     } catch (err) {
       toast.error(err instanceof ApiClientError ? err.message : "Scan failed");
@@ -25,7 +27,13 @@ export function ScanServerButton({ serverId }: { serverId: string }) {
   }
 
   return (
-    <Button size="sm" variant="outline" onClick={handleScan} disabled={scanning} className="gap-2">
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={handleScan}
+      disabled={scanning}
+      className="gap-2"
+    >
       <ScanSearch className={`size-4 ${scanning ? "animate-pulse" : ""}`} />
       {scanning ? "Scanning..." : "Scan Server"}
     </Button>

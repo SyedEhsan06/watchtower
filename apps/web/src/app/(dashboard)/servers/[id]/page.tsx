@@ -8,6 +8,7 @@ import { EnvironmentBadge } from "@/components/environment-badge";
 import { ServerTabs } from "./server-tabs";
 import { ScanServerButton } from "./scan-button";
 import { TestConnectionButton } from "./test-connection-button";
+import { ServerRefreshButton } from "./server-refresh-button";
 import { Pencil } from "lucide-react";
 
 async function getServer(id: string): Promise<ServerSummary | null> {
@@ -24,7 +25,11 @@ async function getServices(serverId: string): Promise<ServiceSummary[]> {
   return data.services;
 }
 
-export default async function ServerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ServerDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const server = await getServer(id);
   if (!server) notFound();
@@ -46,13 +51,19 @@ export default async function ServerDetailPage({ params }: { params: Promise<{ i
         </div>
         <div className="flex items-center gap-2">
           <StatusLabel status={server.connectionStatus} />
+          <ServerRefreshButton />
           {hasSsh && (
             <>
               <TestConnectionButton serverId={server.id} />
               <ScanServerButton serverId={server.id} />
             </>
           )}
-          <Button size="sm" variant="outline" className="gap-2" render={<Link href={`/servers/${server.id}/edit`} />}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            render={<Link href={`/servers/${server.id}/edit`} />}
+          >
             <Pencil className="size-4" />
             Edit
           </Button>

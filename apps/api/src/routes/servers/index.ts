@@ -1,5 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
-import { createServerSchema, updateServerSchema, testConnectionSchema, createApiKeySchema } from "@watchtower/shared";
+import {
+  createServerSchema,
+  updateServerSchema,
+  testConnectionSchema,
+  createApiKeySchema,
+} from "@watchtower/shared";
 import { prisma } from "@watchtower/database";
 import { notFound, ApiError } from "../../utils/errors.js";
 import { serverPublicSelect } from "../../modules/servers/select.js";
@@ -8,8 +13,18 @@ import { loadMasterEncryptionKey } from "../../modules/crypto/master-key.js";
 import { testSshConnection } from "../../modules/ssh/test-connection.js";
 import { loadServerSshParams } from "../../modules/ssh/server-credentials.js";
 import { scanServer } from "../../modules/scan/scan-server.js";
+import {
+  getLiveDocker,
+  getLiveMetrics,
+  getLivePm2,
+  getLiveRepositories,
+  wantsFreshQuery,
+} from "../../modules/scan/live-snapshots.js";
 import { createApiKey } from "../../modules/auth/api-key.js";
-import { requireWorkspaceAdmin, requireWorkspaceId } from "../../modules/workspaces/context.js";
+import {
+  requireWorkspaceAdmin,
+  requireWorkspaceId,
+} from "../../modules/workspaces/context.js";
 
 export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook("preHandler", fastify.requireWorkspace);
@@ -47,7 +62,7 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
         privateKey: body.sshPrivateKey,
       });
       return result;
-    }
+    },
   );
 
   fastify.post("/", async (request, reply) => {
@@ -56,7 +71,13 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
     const body = createServerSchema.parse(request.body);
     const { sshPrivateKey, ...rest } = body;
 
-    let encryptedFields: { encryptedSshPrivateKey: string; sshKeyIv: string; sshKeyAuthTag: string } | undefined;
+    let encryptedFields:
+      | {
+          encryptedSshPrivateKey: string;
+          sshKeyIv: string;
+          sshKeyAuthTag: string;
+        }
+      | undefined;
     if (sshPrivateKey) {
       const masterKey = loadMasterEncryptionKey();
       const encrypted = encryptSecret(sshPrivateKey, masterKey);
@@ -82,10 +103,18 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
     const body = updateServerSchema.parse(request.body);
     const { sshPrivateKey, ...rest } = body;
 
-    const existing = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
+    const existing = await prisma.server.findFirst({
+      where: { id: request.params.id, workspaceId },
+    });
     if (!existing) throw notFound("Server not found");
 
-    let encryptedFields: { encryptedSshPrivateKey: string; sshKeyIv: string; sshKeyAuthTag: string } | undefined;
+    let encryptedFields:
+      | {
+          encryptedSshPrivateKey: string;
+          sshKeyIv: string;
+          sshKeyAuthTag: string;
+        }
+      | undefined;
     if (sshPrivateKey) {
       const masterKey = loadMasterEncryptionKey();
       const encrypted = encryptSecret(sshPrivateKey, masterKey);
@@ -107,7 +136,9 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
     requireWorkspaceAdmin(request);
     const workspaceId = requireWorkspaceId(request);
-    const existing = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
+    const existing = await prisma.server.findFirst({
+      where: { id: request.params.id, workspaceId },
+    });
     if (!existing) throw notFound("Server not found");
 
     await prisma.server.delete({ where: { id: existing.id } });
@@ -121,7 +152,9 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
     async (request) => {
       requireWorkspaceAdmin(request);
       const workspaceId = requireWorkspaceId(request);
-      const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
+      const server = await prisma.server.findFirst({
+        where: { id: request.params.id, workspaceId },
+      });
       if (!server) throw notFound("Server not found");
 
       const sshParams = await loadServerSshParams(request.params.id);
@@ -139,14 +172,15 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
         });
         return result;
       } catch (err) {
-        const message = err instanceof ApiError ? err.message : "Connection failed";
+        const message =
+          err instanceof ApiError ? err.message : "Connection failed";
         await prisma.server.update({
           where: { id: server.id },
           data: { connectionStatus: "OFFLINE", lastConnectionError: message },
         });
         throw err;
       }
-    }
+    },
   );
 
   fastify.post<{ Params: { id: string } }>(
@@ -155,72 +189,107 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
     async (request) => {
       requireWorkspaceAdmin(request);
       const workspaceId = requireWorkspaceId(request);
-      const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
+      const server = await prisma.server.findFirst({
+        where: { id: request.params.id, workspaceId },
+      });
       if (!server) throw notFound("Server not found");
 
       return scanServer(server);
-    }
+    },
   );
 
   fastify.get<{ Params: { id: string } }>("/:id/metrics", async (request) => {
     const workspaceId = requireWorkspaceId(request);
-    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
+    const server = await prisma.server.findFirst({
+      where: { id: request.params.id, workspaceId },
+    });
     if (!server) throw notFound("Server not found");
 
-    const { collectSystemMetrics } = await import("../../modules/scan/system-metrics.js");
-    const sshParams = await loadServerSshParams(request.params.id);
-    const metrics = await collectSystemMetrics(sshParams);
+    const metrics = await getLiveMetrics(request.params.id, {
+      force: wantsFreshQuery(request.query),
+    });
     return { metrics };
   });
 
   fastify.get<{ Params: { id: string } }>("/:id/docker", async (request) => {
     const workspaceId = requireWorkspaceId(request);
-    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
+    const server = await prisma.server.findFirst({
+      where: { id: request.params.id, workspaceId },
+    });
     if (!server) throw notFound("Server not found");
 
-    const { listDockerContainers } = await import("../../modules/docker/docker.js");
-    const sshParams = await loadServerSshParams(request.params.id);
-    const containers = await listDockerContainers(sshParams);
+    const containers = await getLiveDocker(request.params.id, {
+      force: wantsFreshQuery(request.query),
+    });
     return { containers };
   });
 
   fastify.get<{ Params: { id: string } }>("/:id/pm2", async (request) => {
     const workspaceId = requireWorkspaceId(request);
-    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
+    const server = await prisma.server.findFirst({
+      where: { id: request.params.id, workspaceId },
+    });
     if (!server) throw notFound("Server not found");
 
-    const { listPm2Processes } = await import("../../modules/pm2/pm2.js");
-    const sshParams = await loadServerSshParams(request.params.id);
-    const processes = await listPm2Processes(sshParams);
+    const processes = await getLivePm2(request.params.id, {
+      force: wantsFreshQuery(request.query),
+    });
     return { processes };
   });
+
+  fastify.get<{ Params: { id: string } }>(
+    "/:id/repositories",
+    async (request) => {
+      const workspaceId = requireWorkspaceId(request);
+      const server = await prisma.server.findFirst({
+        where: { id: request.params.id, workspaceId },
+      });
+      if (!server) throw notFound("Server not found");
+
+      const repositories = await getLiveRepositories(
+        request.params.id,
+        server.projectDirectories,
+        {
+          force: wantsFreshQuery(request.query),
+        },
+      );
+      return { repositories };
+    },
+  );
 
   // --- API key management (session-auth only; the keys these mint are what
   // unlocks the parallel /external/servers/:id/* routes for machine callers). ---
 
-  fastify.post<{ Params: { id: string } }>("/:id/api-keys", async (request, reply) => {
-    requireWorkspaceAdmin(request);
-    const workspaceId = requireWorkspaceId(request);
-    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
-    if (!server) throw notFound("Server not found");
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/api-keys",
+    async (request, reply) => {
+      requireWorkspaceAdmin(request);
+      const workspaceId = requireWorkspaceId(request);
+      const server = await prisma.server.findFirst({
+        where: { id: request.params.id, workspaceId },
+      });
+      if (!server) throw notFound("Server not found");
 
-    const body = createApiKeySchema.parse(request.body);
-    const created = await createApiKey({
-      name: body.name,
-      serverId: request.params.id,
-      workspaceId,
-      createdByUserId: request.user!.id,
-    });
+      const body = createApiKeySchema.parse(request.body);
+      const created = await createApiKey({
+        name: body.name,
+        serverId: request.params.id,
+        workspaceId,
+        createdByUserId: request.user!.id,
+      });
 
-    reply.status(201);
-    // plaintextKey is returned ONLY here, this one time. It is never stored
-    // or retrievable again after this response.
-    return { apiKey: created };
-  });
+      reply.status(201);
+      // plaintextKey is returned ONLY here, this one time. It is never stored
+      // or retrievable again after this response.
+      return { apiKey: created };
+    },
+  );
 
   fastify.get<{ Params: { id: string } }>("/:id/api-keys", async (request) => {
     const workspaceId = requireWorkspaceId(request);
-    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId } });
+    const server = await prisma.server.findFirst({
+      where: { id: request.params.id, workspaceId },
+    });
     if (!server) throw notFound("Server not found");
 
     const keys = await prisma.apiKey.findMany({
@@ -238,15 +307,27 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
     return { apiKeys: keys };
   });
 
-  fastify.delete<{ Params: { id: string; keyId: string } }>("/:id/api-keys/:keyId", async (request, reply) => {
-    requireWorkspaceAdmin(request);
-    const workspaceId = requireWorkspaceId(request);
-    const key = await prisma.apiKey.findFirst({ where: { id: request.params.keyId, serverId: request.params.id, workspaceId } });
-    if (!key) throw notFound("API key not found");
+  fastify.delete<{ Params: { id: string; keyId: string } }>(
+    "/:id/api-keys/:keyId",
+    async (request, reply) => {
+      requireWorkspaceAdmin(request);
+      const workspaceId = requireWorkspaceId(request);
+      const key = await prisma.apiKey.findFirst({
+        where: {
+          id: request.params.keyId,
+          serverId: request.params.id,
+          workspaceId,
+        },
+      });
+      if (!key) throw notFound("API key not found");
 
-    if (!key.revokedAt) {
-      await prisma.apiKey.update({ where: { id: key.id }, data: { revokedAt: new Date() } });
-    }
-    reply.status(204);
-  });
+      if (!key.revokedAt) {
+        await prisma.apiKey.update({
+          where: { id: key.id },
+          data: { revokedAt: new Date() },
+        });
+      }
+      reply.status(204);
+    },
+  );
 };

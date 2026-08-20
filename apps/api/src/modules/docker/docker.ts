@@ -1,3 +1,4 @@
+import type { Client as SshClient } from "ssh2";
 import { withSshConnection, execCommand } from "../ssh/ssh-client.js";
 import type { SshConnectionParams } from "../ssh/ssh-client.js";
 import { isSafeIdentifier } from "@watchtower/shared";
@@ -24,7 +25,9 @@ interface DockerPsLine {
   Ports: string;
 }
 
-export async function isDockerAvailable(sshParams: SshConnectionParams): Promise<boolean> {
+export async function isDockerAvailable(
+  sshParams: SshConnectionParams,
+): Promise<boolean> {
   const { result } = await withSshConnection(sshParams, async (conn) => {
     const check = await execCommand(conn, "which", ["docker"]);
     return check.code === 0;
@@ -32,17 +35,22 @@ export async function isDockerAvailable(sshParams: SshConnectionParams): Promise
   return result;
 }
 
-export async function listDockerContainers(sshParams: SshConnectionParams): Promise<DockerContainer[]> {
-  const { result } = await withSshConnection(sshParams, async (conn) => {
-    return execCommand(conn, "docker", ["ps", "--all", "--format", "{{json .}}"]);
-  });
+export async function listDockerContainersOn(
+  conn: SshClient,
+): Promise<DockerContainer[]> {
+  const result = await execCommand(conn, "docker", [
+    "ps",
+    "--all",
+    "--format",
+    "{{json .}}",
+  ]);
 
   if (result.code !== 0) {
     if (/permission denied/i.test(result.stderr)) {
       throw new ApiError(
         "SSH_CONNECTION_FAILED",
         "Docker socket access denied — the SSH user needs to be in the docker group",
-        502
+        502,
       );
     }
     return [];
@@ -52,22 +60,38 @@ export async function listDockerContainers(sshParams: SshConnectionParams): Prom
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => {
-      const parsed: DockerPsLine = JSON.parse(line);
-      return {
-        id: parsed.ID,
-        name: parsed.Names,
-        image: parsed.Image,
-        state: parsed.State,
-        status: parsed.Status,
-        createdAt: parsed.CreatedAt,
-        ports: parsed.Ports,
-        restartCount: null,
-      };
+    .flatMap((line) => {
+      try {
+        const parsed: DockerPsLine = JSON.parse(line);
+        return [
+          {
+            id: parsed.ID,
+            name: parsed.Names,
+            image: parsed.Image,
+            state: parsed.State,
+            status: parsed.Status,
+            createdAt: parsed.CreatedAt,
+            ports: parsed.Ports,
+            restartCount: null,
+          },
+        ];
+      } catch {
+        return [];
+      }
     });
 }
 
-export async function inspectDockerContainer(sshParams: SshConnectionParams, containerName: string) {
+export async function listDockerContainers(
+  sshParams: SshConnectionParams,
+): Promise<DockerContainer[]> {
+  const { result } = await withSshConnection(sshParams, listDockerContainersOn);
+  return result;
+}
+
+export async function inspectDockerContainer(
+  sshParams: SshConnectionParams,
+  containerName: string,
+) {
   if (!isSafeIdentifier(containerName)) {
     throw new ApiError("INVALID_IDENTIFIER", "Invalid container name", 400);
   }
@@ -95,14 +119,19 @@ export async function inspectDockerContainer(sshParams: SshConnectionParams, con
 export async function getDockerLogs(
   sshParams: SshConnectionParams,
   containerName: string,
-  lines: number
+  lines: number,
 ): Promise<string> {
   if (!isSafeIdentifier(containerName)) {
     throw new ApiError("INVALID_IDENTIFIER", "Invalid container name", 400);
   }
 
   const { result } = await withSshConnection(sshParams, async (conn) => {
-    return execCommand(conn, "docker", ["logs", "--tail", String(lines), containerName]);
+    return execCommand(conn, "docker", [
+      "logs",
+      "--tail",
+      String(lines),
+      containerName,
+    ]);
   });
 
   return `${result.stdout}${result.stderr}`;
@@ -110,7 +139,7 @@ export async function getDockerLogs(
 
 export async function restartDockerContainer(
   sshParams: SshConnectionParams,
-  containerName: string
+  containerName: string,
 ): Promise<{ success: boolean; message: string }> {
   if (!isSafeIdentifier(containerName)) {
     throw new ApiError("INVALID_IDENTIFIER", "Invalid container name", 400);
@@ -121,7 +150,10 @@ export async function restartDockerContainer(
   });
 
   if (result.code !== 0) {
-    return { success: false, message: result.stderr.trim() || "Restart failed" };
+    return {
+      success: false,
+      message: result.stderr.trim() || "Restart failed",
+    };
   }
   return { success: true, message: "Container restarted" };
 }

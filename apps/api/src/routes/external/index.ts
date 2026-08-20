@@ -2,7 +2,12 @@ import type { FastifyPluginAsync } from "fastify";
 import { prisma } from "@watchtower/database";
 import { notFound } from "../../utils/errors.js";
 import { serverPublicSelect } from "../../modules/servers/select.js";
-import { loadServerSshParams } from "../../modules/ssh/server-credentials.js";
+import {
+  getLiveDocker,
+  getLiveMetrics,
+  getLivePm2,
+  wantsFreshQuery,
+} from "../../modules/scan/live-snapshots.js";
 
 /**
  * Routes for external machine-to-machine callers (e.g. a separate app
@@ -37,46 +42,86 @@ export const externalRoutes: FastifyPluginAsync = async (fastify) => {
     return { server };
   });
 
-  fastify.get<{ Params: { id: string } }>("/servers/:id/metrics", async (request) => {
-    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId: request.apiKeyWorkspaceId! } });
-    if (!server) throw notFound("Server not found");
+  fastify.get<{ Params: { id: string } }>(
+    "/servers/:id/metrics",
+    async (request) => {
+      const server = await prisma.server.findFirst({
+        where: {
+          id: request.params.id,
+          workspaceId: request.apiKeyWorkspaceId!,
+        },
+      });
+      if (!server) throw notFound("Server not found");
 
-    const { collectSystemMetrics } = await import("../../modules/scan/system-metrics.js");
-    const sshParams = await loadServerSshParams(request.params.id);
-    const metrics = await collectSystemMetrics(sshParams);
-    return { metrics };
-  });
+      const metrics = await getLiveMetrics(request.params.id, {
+        force: wantsFreshQuery(request.query),
+      });
+      return { metrics };
+    },
+  );
 
-  fastify.get<{ Params: { id: string } }>("/servers/:id/docker", async (request) => {
-    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId: request.apiKeyWorkspaceId! } });
-    if (!server) throw notFound("Server not found");
+  fastify.get<{ Params: { id: string } }>(
+    "/servers/:id/docker",
+    async (request) => {
+      const server = await prisma.server.findFirst({
+        where: {
+          id: request.params.id,
+          workspaceId: request.apiKeyWorkspaceId!,
+        },
+      });
+      if (!server) throw notFound("Server not found");
 
-    const { listDockerContainers } = await import("../../modules/docker/docker.js");
-    const sshParams = await loadServerSshParams(request.params.id);
-    const containers = await listDockerContainers(sshParams);
-    return { containers };
-  });
+      const containers = await getLiveDocker(request.params.id, {
+        force: wantsFreshQuery(request.query),
+      });
+      return { containers };
+    },
+  );
 
-  fastify.get<{ Params: { id: string } }>("/servers/:id/pm2", async (request) => {
-    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId: request.apiKeyWorkspaceId! } });
-    if (!server) throw notFound("Server not found");
+  fastify.get<{ Params: { id: string } }>(
+    "/servers/:id/pm2",
+    async (request) => {
+      const server = await prisma.server.findFirst({
+        where: {
+          id: request.params.id,
+          workspaceId: request.apiKeyWorkspaceId!,
+        },
+      });
+      if (!server) throw notFound("Server not found");
 
-    const { listPm2Processes } = await import("../../modules/pm2/pm2.js");
-    const sshParams = await loadServerSshParams(request.params.id);
-    const processes = await listPm2Processes(sshParams);
-    return { processes };
-  });
+      const processes = await getLivePm2(request.params.id, {
+        force: wantsFreshQuery(request.query),
+      });
+      return { processes };
+    },
+  );
 
-  fastify.get<{ Params: { id: string } }>("/servers/:id/incidents", async (request) => {
-    const server = await prisma.server.findFirst({ where: { id: request.params.id, workspaceId: request.apiKeyWorkspaceId! } });
-    if (!server) throw notFound("Server not found");
+  fastify.get<{ Params: { id: string } }>(
+    "/servers/:id/incidents",
+    async (request) => {
+      const server = await prisma.server.findFirst({
+        where: {
+          id: request.params.id,
+          workspaceId: request.apiKeyWorkspaceId!,
+        },
+      });
+      if (!server) throw notFound("Server not found");
 
-    const incidents = await prisma.incident.findMany({
-      where: { workspaceId: request.apiKeyWorkspaceId!, service: { serverId: request.params.id, workspaceId: request.apiKeyWorkspaceId! } },
-      include: { service: { select: { id: true, name: true, serverId: true } } },
-      orderBy: { startedAt: "desc" },
-      take: 100,
-    });
-    return { incidents };
-  });
+      const incidents = await prisma.incident.findMany({
+        where: {
+          workspaceId: request.apiKeyWorkspaceId!,
+          service: {
+            serverId: request.params.id,
+            workspaceId: request.apiKeyWorkspaceId!,
+          },
+        },
+        include: {
+          service: { select: { id: true, name: true, serverId: true } },
+        },
+        orderBy: { startedAt: "desc" },
+        take: 100,
+      });
+      return { incidents };
+    },
+  );
 };

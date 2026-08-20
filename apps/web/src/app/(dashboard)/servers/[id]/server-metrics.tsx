@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { apiClientFetch, ApiClientError } from "@/lib/api-client";
+import { Skeleton } from "@/components/ui/skeleton";
+import { LiveToolbar } from "@/components/live-toolbar";
+import { useLiveResource } from "@/hooks/use-live-resource";
 import { RefreshCw } from "lucide-react";
 
 interface SystemMetrics {
@@ -34,39 +35,63 @@ function formatMb(mb: number): string {
   return `${mb}MB`;
 }
 
-export function ServerMetrics({ serverId }: { serverId: string }) {
-  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function MetricsSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <Card key={index} className="py-4">
+          <CardContent className="flex flex-col gap-2 px-4">
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-3 w-16" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiClientFetch<{ metrics: SystemMetrics }>(`/servers/${serverId}/metrics`);
-      setMetrics(data.metrics);
-    } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : "Failed to load metrics");
-    } finally {
-      setLoading(false);
-    }
-  }, [serverId]);
+export function ServerMetrics({
+  serverId,
+  active,
+}: {
+  serverId: string;
+  active: boolean;
+}) {
+  const { data, loading, refreshing, error, fetchedAt, refresh } =
+    useLiveResource<{
+      metrics: SystemMetrics;
+    }>({
+      path: `/servers/${serverId}/metrics`,
+      enabled: active,
+      refreshIntervalMs: 30_000,
+    });
 
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, 30_000);
-    return () => clearInterval(interval);
-  }, [load]);
+  const metrics = data?.metrics ?? null;
 
   if (loading && !metrics) {
-    return <p className="text-sm text-muted-foreground">Loading metrics...</p>;
+    return (
+      <div className="flex flex-col gap-3">
+        <LiveToolbar
+          fetchedAt={fetchedAt}
+          refreshing={refreshing}
+          onRefresh={refresh}
+        />
+        <MetricsSkeleton />
+      </div>
+    );
   }
 
   if (error && !metrics) {
     return (
       <div className="flex flex-col gap-3">
         <p className="text-sm text-red-500">{error}</p>
-        <Button size="sm" variant="outline" onClick={load} className="w-fit gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={refresh}
+          className="w-fit gap-2"
+        >
           <RefreshCw className="size-4" />
           Retry
         </Button>
@@ -78,19 +103,30 @@ export function ServerMetrics({ serverId }: { serverId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
+      <LiveToolbar
+        fetchedAt={fetchedAt}
+        refreshing={refreshing}
+        onRefresh={refresh}
+      />
+      {error && <p className="text-sm text-red-500">{error}</p>}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card className="py-4">
           <CardContent className="px-4">
             <p className="text-xs text-muted-foreground">CPU</p>
-            <p className="text-lg font-semibold">{metrics.cpuUsagePercent ?? "—"}%</p>
-            <p className="text-xs text-muted-foreground">{metrics.cpuCount} cores</p>
+            <p className="text-lg font-semibold">
+              {metrics.cpuUsagePercent ?? "—"}%
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {metrics.cpuCount} cores
+            </p>
           </CardContent>
         </Card>
         <Card className="py-4">
           <CardContent className="px-4">
             <p className="text-xs text-muted-foreground">RAM</p>
             <p className="text-lg font-semibold">
-              {formatMb(metrics.memoryUsedMb)} / {formatMb(metrics.memoryTotalMb)}
+              {formatMb(metrics.memoryUsedMb)} /{" "}
+              {formatMb(metrics.memoryTotalMb)}
             </p>
           </CardContent>
         </Card>
@@ -105,21 +141,16 @@ export function ServerMetrics({ serverId }: { serverId: string }) {
         <Card className="py-4">
           <CardContent className="px-4">
             <p className="text-xs text-muted-foreground">Uptime</p>
-            <p className="text-lg font-semibold">{formatUptime(metrics.uptimeSeconds)}</p>
+            <p className="text-lg font-semibold">
+              {formatUptime(metrics.uptimeSeconds)}
+            </p>
           </CardContent>
         </Card>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span>
-          {metrics.os ?? "Unknown OS"} · {metrics.kernel} · load {metrics.loadAverage.map((n) => n.toFixed(2)).join(", ")}
-        </span>
-        <div className="flex items-center gap-2">
-          <span>Updated {new Date(metrics.collectedAt).toLocaleTimeString()}</span>
-          <Button size="icon-sm" variant="ghost" onClick={load}>
-            <RefreshCw className="size-3.5" />
-          </Button>
-        </div>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        {metrics.os ?? "Unknown OS"} · {metrics.kernel} · load{" "}
+        {metrics.loadAverage.map((n) => n.toFixed(2)).join(", ")}
+      </p>
     </div>
   );
 }

@@ -21,39 +21,44 @@ export interface GitRepoInfo {
  * current state. Only directories explicitly configured on the Server are
  * ever touched.
  */
-export async function discoverGitRepositories(
-  sshParams: SshConnectionParams,
-  projectDirectories: string[]
+export async function discoverGitRepositoriesOn(
+  conn: SshClient,
+  projectDirectories: string[],
 ): Promise<GitRepoInfo[]> {
   const safeDirectories = projectDirectories.filter(isSafeAbsolutePath);
+  const repos: GitRepoInfo[] = [];
 
-  const { result } = await withSshConnection(sshParams, async (conn) => {
-    const repos: GitRepoInfo[] = [];
+  for (const dir of safeDirectories) {
+    const lsResult = await execCommand(conn, "sh", [
+      "-c",
+      `find '${dir.replace(/'/g, "")}' -maxdepth 2 -type d -name .git 2>/dev/null`,
+    ]);
+    const gitDirs = lsResult.stdout.trim().split("\n").filter(Boolean);
 
-    for (const dir of safeDirectories) {
-      const lsResult = await execCommand(conn, "sh", [
-        "-c",
-        `find '${dir.replace(/'/g, "")}' -maxdepth 2 -type d -name .git 2>/dev/null`,
-      ]);
-      const gitDirs = lsResult.stdout.trim().split("\n").filter(Boolean);
-
-      for (const gitDir of gitDirs) {
-        const repoDir = gitDir.replace(/\/\.git$/, "");
-        const info = await readGitRepoInfo(conn, repoDir);
-        if (info) repos.push(info);
-      }
+    for (const gitDir of gitDirs) {
+      const repoDir = gitDir.replace(/\/\.git$/, "");
+      const info = await readGitRepoInfo(conn, repoDir);
+      if (info) repos.push(info);
     }
+  }
 
-    return repos;
-  });
+  return repos;
+}
 
+export async function discoverGitRepositories(
+  sshParams: SshConnectionParams,
+  projectDirectories: string[],
+): Promise<GitRepoInfo[]> {
+  const { result } = await withSshConnection(sshParams, (conn) =>
+    discoverGitRepositoriesOn(conn, projectDirectories),
+  );
   return result;
 }
 
 /** Reads Git state for a single working directory known to contain a repository. */
 export async function getGitInfoForDirectory(
   sshParams: SshConnectionParams,
-  workingDirectory: string
+  workingDirectory: string,
 ): Promise<GitRepoInfo | null> {
   if (!isSafeAbsolutePath(workingDirectory)) {
     throw new ApiError("INVALID_IDENTIFIER", "Invalid working directory", 400);
@@ -66,18 +71,46 @@ export async function getGitInfoForDirectory(
   return result;
 }
 
-async function readGitRepoInfo(conn: SshClient, repoDir: string): Promise<GitRepoInfo | null> {
-  const isRepo = await execCommand(conn, "git", ["-C", repoDir, "rev-parse", "--is-inside-work-tree"]);
+async function readGitRepoInfo(
+  conn: SshClient,
+  repoDir: string,
+): Promise<GitRepoInfo | null> {
+  const isRepo = await execCommand(conn, "git", [
+    "-C",
+    repoDir,
+    "rev-parse",
+    "--is-inside-work-tree",
+  ]);
   if (isRepo.code !== 0) return null;
 
   const [remote, branch, log, statusResult] = await Promise.all([
-    execCommand(conn, "git", ["-C", repoDir, "config", "--get", "remote.origin.url"]),
-    execCommand(conn, "git", ["-C", repoDir, "rev-parse", "--abbrev-ref", "HEAD"]),
-    execCommand(conn, "git", ["-C", repoDir, "log", "-1", "--format=%H%n%an%n%ad%n%s"]),
+    execCommand(conn, "git", [
+      "-C",
+      repoDir,
+      "config",
+      "--get",
+      "remote.origin.url",
+    ]),
+    execCommand(conn, "git", [
+      "-C",
+      repoDir,
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD",
+    ]),
+    execCommand(conn, "git", [
+      "-C",
+      repoDir,
+      "log",
+      "-1",
+      "--format=%H%n%an%n%ad%n%s",
+    ]),
     execCommand(conn, "git", ["-C", repoDir, "status", "--porcelain"]),
   ]);
 
-  const [commitSha, commitAuthor, commitDate, ...messageParts] = log.stdout.trim().split("\n");
+  const [commitSha, commitAuthor, commitDate, ...messageParts] = log.stdout
+    .trim()
+    .split("\n");
 
   return {
     directory: repoDir,
