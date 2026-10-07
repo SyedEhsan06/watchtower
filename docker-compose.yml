@@ -1,15 +1,81 @@
+# Watchtower — self-hosted quickstart: Postgres + migrations + API + web.
+#
+#   ./scripts/gen-env.sh        # writes .env with fresh random secrets
+#   docker compose up -d --build
+#
+# Then open http://localhost:3000 and create your first user (see README).
+# Variables below come from .env (see .env.docker.example for documentation).
+
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: watchtower
-      POSTGRES_PASSWORD: watchtower
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run ./scripts/gen-env.sh first}
       POSTGRES_DB: watchtower
-    ports:
-      - "5435:5432"
     volumes:
       - watchtower-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchtower -d watchtower"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/migrator.Dockerfile
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://watchtower:${POSTGRES_PASSWORD}@postgres:5432/watchtower
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://watchtower:${POSTGRES_PASSWORD}@postgres:5432/watchtower
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:?run ./scripts/gen-env.sh first}
+      SSH_MASTER_ENCRYPTION_KEY: ${SSH_MASTER_ENCRYPTION_KEY:?run ./scripts/gen-env.sh first}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+      # Plain HTTP on localhost needs non-Secure cookies. Set COOKIE_SECURE=true
+      # (the default outside this file) once you serve over HTTPS.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:4000:4000"
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        # Baked into the browser bundle at build time: the URL your BROWSER uses to reach the API.
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Server-side calls from the web container go over the compose network.
+      API_URL: http://api:4000
+    depends_on:
+      - api
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:3000:3000"
 
 volumes:
   watchtower-postgres-data:

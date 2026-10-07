@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/.next
+**/dist
+.turbo
+.env
+.env.*
+!.env.example
+!.env.docker.example
+.private
+docs
+*.md

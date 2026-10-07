@@ -1,182 +1,174 @@
 # Watchtower
 
-An internal monitoring dashboard for servers, Docker containers, PM2 processes,
-systemd services, and HTTP/TCP endpoints — with push notifications and
-installable as a PWA.
+**A self-hosted monitoring dashboard for your own servers, over SSH.**
+Watch servers, Docker containers, PM2 processes, systemd services and HTTP/TCP
+endpoints from one place, get push alerts when something goes down, and restart
+a service from the browser with a confirmation step and an audit trail.
 
-Watchtower supports multiple isolated projects (tenants). The platform owner
-can create and switch between projects; each project has its own servers,
-services, checks, incidents, audit logs, API keys, and members. Project owners
-and admins manage one project, while members have read-only access to it.
-It is deliberately simple: no Kubernetes, no message queues, no custom agents.
-The Fastify API talks to your servers over SSH when needed and runs its own
-in-process scheduler.
+No agents to install on your servers. No Kubernetes. No message queue. One
+Postgres database, one API process, one web app.
 
-## Stack
+Project site: <https://watchtower.syedehsan.com> · License: [MIT](LICENSE)
 
-- **apps/web** — Next.js (App Router) PWA, Tailwind, shadcn/ui
-- **apps/api** — Fastify API: auth, CRUD, SSH operations, monitoring scheduler
-- **packages/database** — Prisma schema + client
-- **packages/shared** — Zod schemas, shared types/enums used by both apps
+<!-- TODO: screenshots, see docs/images/README.md -->
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="Watchtower dashboard (screenshot TODO)" width="800">
+</p>
 
-## Local setup
+## Features
 
-### 1. Prerequisites
+Everything listed here is implemented in this repo.
 
-- Node.js 22+
-- pnpm 10+
-- Docker (for local Postgres via `docker-compose.yml`), or your own Postgres instance
+- **Servers over SSH, agentless.** Add a server with a host, user and private
+  key. CPU, load, memory and disk metrics are read over SSH.
+- **Docker, PM2 and systemd discovery.** List containers and PM2 processes,
+  inspect them, read logs, and check systemd unit status and logs.
+- **Service checks.** HTTP (expected status code), TCP, and SSH runtime
+  (is the container / process / unit running) checks with a configurable
+  failure threshold. A service is `DEGRADED` until it fails N times in a row,
+  then `DOWN`; one success recovers it.
+- **Incidents.** Opened when a service goes down, closed when it recovers.
+- **Push notifications.** Web Push (VAPID) alerts on down and recovery; the web
+  app is an installable PWA.
+- **Restart actions with guardrails.** Restart a Docker container, PM2 process
+  or systemd unit. You must type the exact service name to confirm.
+- **Audit log.** Restarts, host key re-trusts and other mutating actions record
+  who did what and whether it succeeded.
+- **Service groups and Git repository info** for project directories you
+  allow-list per server.
+- **Multi-project tenancy.** Isolated projects with their own servers, services,
+  incidents, audit logs and members (owner / admin / member roles), plus a
+  platform-owner console.
+- **Scoped API keys.** Read-only keys per server for machine polling via
+  `/external/*` routes.
+- **Encrypted SSH keys.** AES-256-GCM at rest; never returned by the API.
+- **Re-trust host key.** One click (audited) after a legitimate host key change.
 
-### 2. Install dependencies
+## Quickstart (Docker)
+
+Requires Docker with Compose v2 and `openssl`.
+
+```bash
+git clone <your-fork-or-this-repo-url> watchtower
+cd watchtower
+./scripts/gen-env.sh                 # writes .env with random secrets
+docker compose up -d --build         # Postgres + migrations + API + web
+```
+
+Create your first user (there is no signup page):
+
+```bash
+docker compose exec api node dist/scripts/create-user.js you@example.com "a-strong-password"
+```
+
+Open <http://localhost:3000> and sign in. The first user created becomes the
+platform owner and gets a `Default Project`.
+
+Ports bind to `127.0.0.1` only. To expose Watchtower, put a TLS reverse proxy
+(Caddy, nginx) in front of the web (3000) and API (4000), then set in `.env`:
+`APP_URL`, `PUBLIC_API_URL`, `COOKIE_SECURE=true` and, if web and API are on
+sibling subdomains, `COOKIE_DOMAIN=.example.com`. Rebuild with
+`docker compose up -d --build` (the API URL is baked into the web bundle).
+
+> Back up `SSH_MASTER_ENCRYPTION_KEY` from `.env` somewhere outside the
+> database. If you lose it, every stored SSH key is unrecoverable.
+
+All variables are documented in [.env.docker.example](.env.docker.example).
+
+> Status: the compose file is syntax-checked but a full end-to-end run was not
+> performed by the author of this change (Docker daemon unavailable at the time).
+> If it fails for you, please open an issue.
+
+## Security model
+
+Watchtower holds credentials that can reach your servers, so read
+[docs/SSH_SECURITY.md](docs/SSH_SECURITY.md) before pointing it at production.
+In short:
+
+- SSH private keys are encrypted with AES-256-GCM using a master key that lives
+  only in the API's environment. The API refuses to boot without it.
+- Host keys use trust-on-first-connect, then are pinned and enforced.
+- There is no "run a command" API. Every SSH action is a fixed operation with
+  allow-list-validated identifiers passed as argv, not shell strings.
+- Mutating actions require authentication and project-admin rights and are
+  audited. Restarts require typing the service name.
+- Use a dedicated, restricted `monitor` user on every server, never `root`.
+  Note that `docker` group membership is root-equivalent on that host.
+
+Report vulnerabilities privately: see [SECURITY.md](SECURITY.md).
+
+## Limitations
+
+Please read these before adopting Watchtower.
+
+- **Single-operator oriented.** Built for one person or a small trusted team.
+  Project roles exist, but it is not hardened as a multi-tenant hosted service.
+- **One API instance only.** The scheduler is in-process with an in-memory
+  lock; running replicas would double-run checks.
+- **TOFU host keys.** The first connection is trusted. A man-in-the-middle on
+  that first connect is not detected. Verify fingerprints out-of-band if it matters.
+- **No public signup, no password reset flow.** Users are created from the CLI
+  or by the platform owner.
+- **No SaaS.** Do not run this as a hosted service for strangers: it stores
+  their SSH keys. Self-host it for infrastructure you control.
+- **HTTP checks fetch any URL an admin configures** from the API host, so treat
+  project admins as trusted with respect to your internal network.
+- **No MFA, no SSO.** Put it behind a VPN or an authenticating proxy if exposed.
+- Check history is retained for 30 days; incidents and audit logs are kept.
+- Lint currently reports a few React Compiler warnings in existing hooks.
+
+## Roadmap
+
+Ideas, not promises:
+
+- Release tags and published container images
+- Database-backed scheduler lock for multiple API replicas
+- Alert channels beyond Web Push (email, webhook)
+- Optional MFA
+- Password reset / user management from the UI
+- Pinned-fingerprint entry before first connect
+
+## Development
+
+Requirements: Node.js 22+, pnpm 10+, Docker (Postgres).
 
 ```bash
 pnpm install
-```
-
-### 3. Start Postgres
-
-```bash
-docker compose up -d
-```
-
-This starts Postgres on `localhost:5433` (not 5432, to avoid clashing with
-other local Postgres instances). Adjust `docker-compose.yml` and your `.env`
-files together if you change the port.
-
-### 4. Configure environment variables
-
-Copy `.env.example` and fill in real values for each app. This repo uses
-**per-package `.env` files**, not a single root `.env`:
-
-```bash
-cp .env.example packages/database/.env   # only needs DATABASE_URL
-cp .env.example apps/api/.env            # needs everything
-cp .env.example apps/web/.env.local      # only needs API_URL / NEXT_PUBLIC_API_URL / NEXT_PUBLIC_VAPID_PUBLIC_KEY
-```
-
-Generate the two required secrets:
-
-```bash
-# AUTH_SECRET and SSH_MASTER_ENCRYPTION_KEY — both must be 32-byte hex strings
-openssl rand -hex 32
-openssl rand -hex 32
-
-# VAPID keys for Web Push
-npx web-push generate-vapid-keys
-```
-
-**The API will refuse to start without a valid `SSH_MASTER_ENCRYPTION_KEY`.**
-This is intentional — see [docs/SSH_SECURITY.md](docs/SSH_SECURITY.md).
-
-### 5. Run database migrations
-
-```bash
+docker compose -f docker-compose.dev.yml up -d   # Postgres on localhost:5433
+cp .env.example packages/database/.env
+cp .env.example apps/api/.env
+cp .env.example apps/web/.env.local
+openssl rand -hex 32   # use for AUTH_SECRET and SSH_MASTER_ENCRYPTION_KEY in apps/api/.env
+pnpm db:generate
 pnpm db:migrate
+cd apps/api && pnpm create-user you@example.com "a-strong-password" && cd ../..
+pnpm dev                # web :3000, API :4000
 ```
 
-### 6. Create your first user
-
-There is no public signup — users are created via CLI:
+Set `ENABLE_BACKGROUND_JOBS=true` in `apps/api/.env` to run the scheduler in
+development.
 
 ```bash
-cd apps/api
-pnpm create-user you@example.com "a-strong-password"
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
 
-The first user created after the workspace migration becomes the platform
-owner and receives the initial `Default Project`. The owner can create more
-projects from the project switcher and add existing users from Settings.
-Project admins can manage members in their own project but cannot create
-projects or grant platform-owner access.
+### Layout
 
-### 7. Start the dev servers
+- `apps/web`: Next.js (App Router) PWA, Tailwind, shadcn/ui
+- `apps/api`: Fastify API, SSH operations, monitoring scheduler
+- `packages/database`: Prisma schema and client
+- `packages/shared`: Zod schemas and types shared by both apps
 
-```bash
-pnpm dev
-```
+### Retention
 
-This runs both `apps/web` (default `localhost:3000`) and `apps/api` (default
-`localhost:4000`) via Turborepo. If those ports are already in use on your
-machine, override `PORT` in `apps/api/.env` and `API_URL` /
-`NEXT_PUBLIC_API_URL` in `apps/web/.env.local` to match.
+`CheckResult` rows older than 30 days are deleted hourly
+(`apps/api/src/modules/retention/retention.ts`).
 
-## Development commands
+## Contributing
 
-```bash
-pnpm dev          # run all apps in dev mode
-pnpm build        # production build of all apps
-pnpm lint         # lint all apps
-pnpm typecheck    # typecheck all apps
-pnpm test         # run all tests (Vitest)
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
-pnpm db:generate  # regenerate Prisma client after schema changes
-pnpm db:migrate   # create + apply a new migration
-pnpm db:studio    # open Prisma Studio
-```
+## License
 
-## Production build
-
-```bash
-pnpm build
-cd apps/api && pnpm start   # node --env-file=.env dist/server.js
-cd apps/web && pnpm start   # next start
-```
-
-Run both behind a reverse proxy (Caddy/nginx) with TLS. Set `APP_URL` (API's
-CORS origin) and `API_URL`/`NEXT_PUBLIC_API_URL` (web's backend target) to
-your real HTTPS domains.
-
-## Environment variables
-
-See [.env.example](.env.example) for the full list with descriptions. Key ones:
-
-| Variable | Used by | Purpose |
-|---|---|---|
-| `DATABASE_URL` | database, api | Postgres connection string |
-| `APP_URL` | api | CORS origin allowlist (the web app's URL) |
-| `API_URL` / `NEXT_PUBLIC_API_URL` | web | Where the browser/server components reach the API |
-| `AUTH_SECRET` | api | Reserved for future token signing; sessions currently use random opaque IDs stored in Postgres |
-| `SSH_MASTER_ENCRYPTION_KEY` | api | AES-256-GCM key encrypting SSH private keys at rest. **API won't boot without it.** |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | api | Web Push signing keys |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | web | Same public key, exposed to the browser to create push subscriptions |
-
-## Architecture notes
-
-### Monitoring scheduler
-
-A single `setInterval` loop inside the Fastify process ticks every 10 seconds,
-picks up to 20 due services (`nextCheckAt <= now`), and runs their checks with
-bounded concurrency (5 at a time) using an in-memory lock to prevent the same
-service being checked twice concurrently.
-
-**This assumes exactly one API instance.** Running multiple replicas would let
-different instances check the same service at the same time. For a
-single-operator internal tool this is an acceptable, documented limitation —
-scaling beyond one instance would need a database-backed lock (e.g.
-`SELECT ... FOR UPDATE SKIP LOCKED`) instead of the in-memory `Set`.
-
-### SSH security
-
-See [docs/SSH_SECURITY.md](docs/SSH_SECURITY.md) for:
-- How SSH private keys are encrypted (AES-256-GCM) and why the master key must
-  never enter the database
-- The host key verification strategy (trust-on-first-connect) and its tradeoffs
-- How to set up a dedicated, restricted `monitor` user on your servers
-- Why Docker socket access is effectively root-equivalent, and how to think
-  about that risk
-
-### Safe command execution
-
-There is no generic "run a command" API. Every SSH-backed action (Docker
-logs/restart, PM2 logs/restart, systemd status/logs/restart, git info) goes
-through a fixed set of operations in `apps/api/src/modules/{docker,pm2,systemd,git}`.
-Identifiers (container names, process names, unit names, paths) are validated
-against a strict allowlist regex (`packages/shared/src/identifiers.ts`) before
-they're ever passed to `ssh2`'s `exec`, and are passed as an argv array rather
-than concatenated into a shell string.
-
-### Data retention
-
-`CheckResult` rows older than 30 days are deleted by an hourly cleanup job
-(`apps/api/src/modules/retention/retention.ts`). Incidents and audit logs are
-never auto-deleted.
+[MIT](LICENSE) © Syed Ehsan

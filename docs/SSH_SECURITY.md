@@ -53,9 +53,12 @@ them in advance. It uses trust-on-first-connect:
   explicit `SSH_HOST_KEY_MISMATCH`-style error — Watchtower does **not**
   silently reconnect or overwrite the trusted fingerprint.
 - If you legitimately rotate a server's host key (reinstall, restore from
-  snapshot, etc.), you'll need to re-approve it — currently by editing the
-  server or re-running Test Connection after clearing the stored fingerprint
-  via the database, since there's no one-click "re-trust" button in v1.
+  snapshot, etc.), open the server's **Edit** page and click **Re-trust host
+  key**. This clears the stored fingerprint through an authenticated,
+  project-admin-only API call (`POST /servers/:id/retrust-host-key`) and writes
+  a `server.host_key.retrust` entry to the audit log that records the
+  fingerprint it replaced. The next connection pins whatever key the server
+  presents, so confirm the new fingerprint out-of-band first if you can.
 
 **Why TOFU instead of requiring you to paste the fingerprint upfront:** for a
 single-operator internal tool where you're usually adding servers you already
