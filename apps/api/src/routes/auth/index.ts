@@ -4,8 +4,8 @@ import { prisma } from "@watchtower/database";
 import { verifyPassword } from "../../modules/auth/password.js";
 import { createSession, destroySession, SESSION_COOKIE_NAME } from "../../modules/auth/session.js";
 import { ApiError } from "../../utils/errors.js";
+import { cookieBaseOptions, cookieClearOptions } from "../../utils/cookies.js";
 
-const isProduction = process.env.NODE_ENV === "production";
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
@@ -31,15 +31,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const session = await createSession(user.id);
 
       reply.setCookie(SESSION_COOKIE_NAME, session.id, {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: "lax",
-        path: "/",
-        domain: isProduction ? ".watchtower.syedehsan.com" : undefined,
+        ...cookieBaseOptions(),
         expires: session.expiresAt,
       });
 
-    return { id: user.id, email: user.email, isPlatformOwner: user.isPlatformOwner };
+      return { id: user.id, email: user.email, isPlatformOwner: user.isPlatformOwner };
     }
   );
 
@@ -48,10 +44,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     if (sessionId) {
       await destroySession(sessionId);
     }
-    reply.clearCookie(SESSION_COOKIE_NAME, { 
-      path: "/",
-      domain: isProduction ? ".watchtower.syedehsan.com" : undefined
-    });
+    reply.clearCookie(SESSION_COOKIE_NAME, cookieClearOptions());
     return { success: true };
   });
 

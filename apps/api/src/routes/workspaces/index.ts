@@ -3,6 +3,7 @@ import { prisma, type WorkspaceRole } from "@watchtower/database";
 import { addWorkspaceMemberSchema, createUserSchema, createWorkspaceSchema } from "@watchtower/shared";
 import { notFound, badRequest, forbidden } from "../../utils/errors.js";
 import { hashPassword } from "../../modules/auth/password.js";
+import { cookieBaseOptions } from "../../utils/cookies.js";
 import {
   WORKSPACE_COOKIE_NAME,
   assertWorkspaceMatch,
@@ -11,15 +12,9 @@ import {
   requireWorkspaceAdmin,
 } from "../../modules/workspaces/context.js";
 
-const isProduction = process.env.NODE_ENV === "production";
-
 function setWorkspaceCookie(reply: FastifyReply, workspaceId: string) {
   reply.setCookie(WORKSPACE_COOKIE_NAME, workspaceId, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: "lax",
-    path: "/",
-    domain: isProduction ? ".watchtower.syedehsan.com" : undefined,
+    ...cookieBaseOptions(),
     maxAge: 365 * 24 * 60 * 60,
   });
 }
