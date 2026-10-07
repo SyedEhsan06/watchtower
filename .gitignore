@@ -11,3 +11,7 @@ build/
 .DS_Store
 .pnpm-store/
 *.tsbuildinfo
+
+# Maintainer-specific deploy scripts kept locally, never published
+.private/
+.env.docker
