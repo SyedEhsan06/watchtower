@@ -23,7 +23,7 @@ import {
 import { apiClientFetch, ApiClientError } from "@/lib/api-client";
 import type { ServerSummary } from "@/lib/types";
 import { toast } from "sonner";
-import { X, Plus, CheckCircle2, XCircle } from "lucide-react";
+import { X, Plus, CheckCircle2, XCircle, ShieldAlert } from "lucide-react";
 
 interface TestConnectionResult {
   success: true;
@@ -49,6 +49,8 @@ export function ServerForm({ server }: { server?: ServerSummary }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [hostKeyFingerprint, setHostKeyFingerprint] = useState(server?.sshHostKeyFingerprint ?? null);
+  const [retrusting, setRetrusting] = useState(false);
 
   function addDirectory() {
     const trimmed = newDir.trim();
@@ -77,6 +79,24 @@ export function ServerForm({ server }: { server?: ServerSummary }) {
       setTestError(err instanceof ApiClientError ? err.message : "Connection test failed");
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleRetrustHostKey() {
+    if (!server) return;
+    const confirmed = window.confirm(
+      "Forget the pinned host key? Watchtower will trust whatever key this server presents on its next connection. Only do this if you know the host key changed (reinstall, snapshot restore).",
+    );
+    if (!confirmed) return;
+    setRetrusting(true);
+    try {
+      await apiClientFetch(`/servers/${server.id}/retrust-host-key`, { method: "POST" });
+      setHostKeyFingerprint(null);
+      toast.success("Host key cleared. The next connection will re-trust the server.");
+    } catch (err) {
+      toast.error(err instanceof ApiClientError ? err.message : "Failed to clear host key");
+    } finally {
+      setRetrusting(false);
     }
   }
 
@@ -167,7 +187,7 @@ export function ServerForm({ server }: { server?: ServerSummary }) {
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-2 flex flex-col gap-1.5">
               <Label htmlFor="host">Host / IP</Label>
-              <Input id="host" value={host} onChange={(e) => setHost(e.target.value)} placeholder="168.144.90.223" required />
+              <Input id="host" value={host} onChange={(e) => setHost(e.target.value)} placeholder="203.0.113.10" required />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sshPort">SSH Port</Label>
@@ -192,6 +212,31 @@ export function ServerForm({ server }: { server?: ServerSummary }) {
               Encrypted at rest with AES-256-GCM. Never displayed again after saving.
             </p>
           </div>
+
+          {isEditing && (
+            <div className="flex flex-col gap-1.5 rounded-md border p-3">
+              <Label>Trusted host key</Label>
+              {hostKeyFingerprint ? (
+                <>
+                  <p className="break-all font-mono text-xs">{hostKeyFingerprint}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Pinned on first connection. If the server&apos;s host key legitimately changed, re-trust it to
+                    pin the new one.
+                  </p>
+                  <div>
+                    <Button type="button" variant="outline" size="sm" onClick={handleRetrustHostKey} disabled={retrusting}>
+                      <ShieldAlert className="size-3.5" />
+                      {retrusting ? "Clearing..." : "Re-trust host key"}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No host key pinned yet. The next successful connection will pin it.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             <Button

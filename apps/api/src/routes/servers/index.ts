@@ -20,6 +20,7 @@ import {
   getLiveRepositories,
   wantsFreshQuery,
 } from "../../modules/scan/live-snapshots.js";
+import { retrustHostKey } from "../../modules/servers/retrust-host-key.js";
 import { createApiKey } from "../../modules/auth/api-key.js";
 import {
   requireWorkspaceAdmin,
@@ -180,6 +181,25 @@ export const serverRoutes: FastifyPluginAsync = async (fastify) => {
         });
         throw err;
       }
+    },
+  );
+
+  // Clears the pinned SSH host key so the next connection trusts the key the
+  // server presents now. Use after a legitimate host key rotation (reinstall,
+  // snapshot restore). Audited.
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/retrust-host-key",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    async (request) => {
+      requireWorkspaceAdmin(request);
+      const workspaceId = requireWorkspaceId(request);
+      const result = await retrustHostKey({
+        serverId: request.params.id,
+        workspaceId,
+        userId: request.user!.id,
+      });
+      if (!result) throw notFound("Server not found");
+      return { success: true };
     },
   );
 
