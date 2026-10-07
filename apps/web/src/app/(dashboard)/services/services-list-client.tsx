@@ -189,7 +189,7 @@ export function ServicesListClient({
             className="pl-9 bg-background"
           />
         </div>
-        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)} className="w-full sm:w-[250px]">
+        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "grouped" | "list")} className="w-full sm:w-[250px]">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="grouped"><LayoutGrid className="w-4 h-4 mr-2"/> Groups</TabsTrigger>
             <TabsTrigger value="list"><List className="w-4 h-4 mr-2"/> List</TabsTrigger>

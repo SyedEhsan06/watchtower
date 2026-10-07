@@ -133,7 +133,7 @@ function CreateKeyDialog({
               <DialogTitle>Generate new API key</DialogTitle>
               <DialogDescription>
                 Creates a key scoped to this server only. Give it a name so you
-                can recognize it later (e.g. "sydinnovations-os polling").
+                can recognize it later (e.g. &quot;monitoring poller&quot;).
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-1.5">
@@ -142,7 +142,7 @@ function CreateKeyDialog({
                 id="key-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="sydinnovations-os polling"
+                placeholder="monitoring poller"
                 autoFocus
               />
             </div>
@@ -205,7 +205,7 @@ function RevokeKeyButton({
       />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Revoke "{apiKey.name}"?</DialogTitle>
+          <DialogTitle>Revoke &quot;{apiKey.name}&quot;?</DialogTitle>
           <DialogDescription>
             This key will immediately stop working for any external caller. This
             cannot be undone.
@@ -262,7 +262,7 @@ export function ApiAccessTab({
               status, live metrics, Docker state, PM2 state, and incidents —
               under{" "}
               <code className="font-mono text-xs">
-                GET /external/servers/{serverId}/*
+                {`GET /external/servers/${serverId}/*`}
               </code>
               .
             </p>
